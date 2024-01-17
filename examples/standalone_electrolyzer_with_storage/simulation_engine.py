@@ -86,6 +86,12 @@ class Simulator:
 
         self._df.loc[self._df['grid_import'] > 0, 'grid_import'] = 0
 
+        self._df['offsite_spill'] = (self._df['PostExportllOffsitePower'] *
+                                     self._df['seconds'] / 3600.0 / 1000.0
+                                     + self._df['poi'])
+
+        self._df.loc[self._df['offsite_spill'] < 0, 'offsite_spill'] = 0
+
         self._df.to_csv(os.path.join(self._output_path, 'results.csv'))
         print('time: ', time.time() - start_time)
         print(f'case_count: {self._controller.case_count}')
