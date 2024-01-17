@@ -5,11 +5,9 @@ from hoptimiser.system_layouts.components.compressor import HydrogenCompressor
 
 
 class HydrogenStorageUnit:
-    def __init__(self, tank: HydrogenTank, compressor: HydrogenCompressor, name='Hydrogen Storage Unit',
-                 is_logging=True, create_load_profile_csv=True, output_directory=os.getcwd()):
+    def __init__(self, tank: HydrogenTank, compressor: HydrogenCompressor, name='Hydrogen Storage Unit'):
 
         self.name = name
-        self.create_load_profile_csv = create_load_profile_csv
 
         self._tank = tank
         self._compressor = compressor

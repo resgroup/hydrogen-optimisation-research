@@ -40,16 +40,9 @@ class SystemLayout:
 
     def _get_electrolyzer(self):
         return ElectrolyzerUnit(self._get_stack(),
-                                # commissioning_datetime=self.commissioning_datetime,
-
                                 commissioning_year=self._kwargs['commissioning_year'],
                                 operational_years=self._kwargs['operational_years'],
-                                # rebuild_allowed=self._kwargs['electrolyzer_rebuild_allowed'],
-                                name='Electrolyzer Unit',
-                                # output_directory=self._output_directory,
-                                # is_logging=self._is_logging,
-                                # create_load_profile_csv=self._is_logging_load_profile)
-                                )
+                                name='Electrolyzer Unit')
 
     def _get_compressor(self):
         unit_rated_charge_rate_mw_h2 = self._kwargs.get('compressor_unit_rated_charge_rate_mw_h2')
@@ -100,7 +93,4 @@ class SystemLayout:
     def _get_hydrogen_storage_unit(self):
         return HydrogenStorageUnit(tank=self._get_tank(),
                                    compressor=self._get_compressor(),
-                                   name='Hydrogen Storage Unit',
-                                   output_directory=self._output_directory,
-                                   is_logging=False,
-                                   create_load_profile_csv=False)
+                                   name='Hydrogen Storage Unit')
