@@ -20,7 +20,7 @@ class SystemLayout:
         self._is_logging = True
         self._is_logging_load_profile = False
 
-    def _get_stack(self):
+    def _get_stack(self) -> Stack:
         return Stack(oem=self._kwargs['stack_oem'],
                      kind=self._kwargs['stack_kind'],
                      rated_power=self._kwargs['stack_rated_power_kw'],
@@ -38,13 +38,13 @@ class SystemLayout:
                      replacement_learning_curve=self._kwargs['stack_replacement_learning_curve'],
                      floor_area=self._kwargs['stack_floor_area'])
 
-    def _get_electrolyzer(self):
+    def _get_electrolyzer(self) -> ElectrolyzerUnit:
         return ElectrolyzerUnit(self._get_stack(),
                                 commissioning_year=self._kwargs['commissioning_year'],
                                 operational_years=self._kwargs['operational_years'],
                                 name='Electrolyzer Unit')
 
-    def _get_compressor(self):
+    def _get_compressor(self) -> HydrogenCompressor:
         unit_rated_charge_rate_mw_h2 = self._kwargs.get('compressor_unit_rated_charge_rate_mw_h2')
         if isinstance(unit_rated_charge_rate_mw_h2, (int, float)):
             pass
@@ -65,7 +65,7 @@ class SystemLayout:
                                   count=self._kwargs['compressor_count'],
                                   heating_value=self._kwargs['heating_value'])
 
-    def _get_tank(self):
+    def _get_tank(self) -> HydrogenTank:
         unit_rated_discharge_rate_mw_h2 = self._kwargs.get('tank_unit_rated_discharge_rate_mw_h2')
         if isinstance(unit_rated_discharge_rate_mw_h2, (int, float)):
             pass
@@ -90,7 +90,7 @@ class SystemLayout:
                             heating_value=self._kwargs['heating_value'],
                             initial_soc=self._kwargs['tank_initial_soc'])
 
-    def _get_hydrogen_storage_unit(self):
+    def _get_hydrogen_storage_unit(self) -> HydrogenStorageUnit:
         return HydrogenStorageUnit(tank=self._get_tank(),
                                    compressor=self._get_compressor(),
                                    name='Hydrogen Storage Unit')
