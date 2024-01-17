@@ -1,16 +1,21 @@
+from typing import Tuple, Dict
+
 import numpy as np
+import pandas as pd
+
+from hoptimiser.system_layouts.topologies.standalone_electrolzyer_with_storage import SystemLayout
 
 
 class Controller:
-    def __init__(self, system_layout, kwargs) -> None:
+    def __init__(self, system_layout: SystemLayout, kwargs: Dict) -> None:
         self._system_layout = system_layout
         self._kwargs = kwargs
         self.case_count = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
 
-    def case_1(self, h2_demand_min_energy, h2_demand_max_energy,
-               tank_possible_charge_kwh_h2, tank_possible_discharge_kwh_h2,
-               electrolyzer_min_h2_yield_energy, electrolyzer_max_h2_yield_energy,
-               offsite_h2_yield_energy):
+    def case_1(self, h2_demand_min_energy: float, h2_demand_max_energy: float,
+               tank_possible_charge_kwh_h2: float, tank_possible_discharge_kwh_h2: float,
+               electrolyzer_min_h2_yield_energy: float, electrolyzer_max_h2_yield_energy: float,
+               offsite_h2_yield_energy: float) -> Tuple[float, float]:
         """
         electrolyzer_max_h2_yield_energy <= h2_demand_min_energy
         NOTE: Tank will never charge in this case.
@@ -31,10 +36,10 @@ class Controller:
 
         return electrolyzer_h2_yield_energy, tank_response_kwh_h2
 
-    def case_2(self, h2_demand_min_energy, h2_demand_max_energy,
-               tank_possible_charge_kwh_h2, tank_possible_discharge_kwh_h2,
-               electrolyzer_min_h2_yield_energy, electrolyzer_max_h2_yield_energy,
-               offsite_h2_yield_energy):
+    def case_2(self, h2_demand_min_energy: float, h2_demand_max_energy: float,
+               tank_possible_charge_kwh_h2: float, tank_possible_discharge_kwh_h2: float,
+               electrolyzer_min_h2_yield_energy: float, electrolyzer_max_h2_yield_energy: float,
+               offsite_h2_yield_energy: float) -> Tuple[float, float]:
         """
         (electrolyzer_min_h2_yield_energy <= h2_demand_min_energy) and (
             electrolyzer_max_h2_yield_energy <= h2_demand_max_energy)
@@ -64,10 +69,10 @@ class Controller:
 
         return electrolyzer_h2_yield_energy, tank_response_kwh_h2
 
-    def case_3(self, h2_demand_min_energy, h2_demand_max_energy,
-               tank_possible_charge_kwh_h2, tank_possible_discharge_kwh_h2,
-               electrolyzer_min_h2_yield_energy, electrolyzer_max_h2_yield_energy,
-               offsite_h2_yield_energy):
+    def case_3(self, h2_demand_min_energy: float, h2_demand_max_energy: float,
+               tank_possible_charge_kwh_h2: float, tank_possible_discharge_kwh_h2: float,
+               electrolyzer_min_h2_yield_energy: float, electrolyzer_max_h2_yield_energy: float,
+               offsite_h2_yield_energy: float) -> Tuple[float, float]:
         """
         (electrolyzer_min_h2_yield_energy <= h2_demand_min_energy) and (
             electrolyzer_max_h2_yield_energy > h2_demand_max_energy)
@@ -98,10 +103,10 @@ class Controller:
 
         return electrolyzer_h2_yield_energy, tank_response_kwh_h2
 
-    def case_4(self, h2_demand_min_energy, h2_demand_max_energy,
-               tank_possible_charge_kwh_h2, tank_possible_discharge_kwh_h2,
-               electrolyzer_min_h2_yield_energy, electrolyzer_max_h2_yield_energy,
-               offsite_h2_yield_energy):
+    def case_4(self, h2_demand_min_energy: float, h2_demand_max_energy: float,
+               tank_possible_charge_kwh_h2: float, tank_possible_discharge_kwh_h2: float,
+               electrolyzer_min_h2_yield_energy: float, electrolyzer_max_h2_yield_energy: float,
+               offsite_h2_yield_energy: float) -> Tuple[float, float]:
         """
         (electrolyzer_min_h2_yield_energy > h2_demand_min_energy) and (
             electrolyzer_max_h2_yield_energy <= h2_demand_max_energy)
@@ -118,10 +123,10 @@ class Controller:
                                         -tank_possible_charge_kwh_h2)
         return electrolyzer_h2_yield_energy, tank_response_kwh_h2
 
-    def case_5(self, h2_demand_min_energy, h2_demand_max_energy,
-               tank_possible_charge_kwh_h2, tank_possible_discharge_kwh_h2,
-               electrolyzer_min_h2_yield_energy, electrolyzer_max_h2_yield_energy,
-               offsite_h2_yield_energy):
+    def case_5(self, h2_demand_min_energy: float, h2_demand_max_energy: float,
+               tank_possible_charge_kwh_h2: float, tank_possible_discharge_kwh_h2: float,
+               electrolyzer_min_h2_yield_energy: float, electrolyzer_max_h2_yield_energy: float,
+               offsite_h2_yield_energy: float) -> Tuple[float, float]:
         """
         (electrolyzer_min_h2_yield_energy > h2_demand_min_energy) and (
             electrolyzer_max_h2_yield_energy > h2_demand_max_energy)
@@ -146,10 +151,10 @@ class Controller:
 
         return electrolyzer_h2_yield_energy, tank_response_kwh_h2
 
-    def case_6(self, h2_demand_min_energy, h2_demand_max_energy,
-               tank_possible_charge_kwh_h2, tank_possible_discharge_kwh_h2,
-               electrolyzer_min_h2_yield_energy, electrolyzer_max_h2_yield_energy,
-               offsite_h2_yield_energy):
+    def case_6(self, h2_demand_min_energy: float, h2_demand_max_energy: float,
+               tank_possible_charge_kwh_h2: float, tank_possible_discharge_kwh_h2: float,
+               electrolyzer_min_h2_yield_energy: float, electrolyzer_max_h2_yield_energy: float,
+               offsite_h2_yield_energy: float) -> Tuple[float, float]:
         """
         h2_demand_max_energy <= electrolyzer_min_h2_yield_energy <= electrolyzer_max_h2_yield_energy
         """
@@ -177,7 +182,7 @@ class Controller:
 
         return electrolyzer_h2_yield_energy, tank_response_kwh_h2
 
-    def _request_import_power_at_electrolyzer(self, row):
+    def _request_import_power_at_electrolyzer(self, row: pd.Series) -> Tuple[float, float, float, float]:
         seconds = row['seconds']
         hours = seconds / 3600.0
 
