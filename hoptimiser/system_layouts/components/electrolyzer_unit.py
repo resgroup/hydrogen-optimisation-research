@@ -71,9 +71,7 @@ class ElectrolyzerUnit:
 
         df['adjustment_factor'] = (1 + df['yearly_rate']).cumprod()
         df.set_index('year', drop=True, inplace=True)
-        for idx, row in df.iterrows():
-            print(idx, row['rate'], row['yearly_rate'], row['adjustment_factor'])
-        df.to_csv('z_learn_rates.csv')
+        # df.to_csv('z_learn_rates.csv')
         return df
 
     def _get_efficiency_learning_rate(self) -> float:
@@ -96,7 +94,7 @@ class ElectrolyzerUnit:
 
         df_tmp = pd.DataFrame(
             data={'power_ratio': self._stack.efficiency_table['power_ratio'], 'efficiency': efficiency_train})
-        df_tmp.to_csv('z_efficiency_curve_scaled.csv')
+        # df_tmp.to_csv('z_efficiency_curve_scaled.csv')
 
         # Interpolates using a cubic spline over interval input_power[1:]
         get_efficiency = PchipInterpolator(x=input_power_train[1:], y=efficiency_train[1:])
@@ -156,7 +154,7 @@ class ElectrolyzerUnit:
             max_h2_yield_power_gross = self._interpolate_input_power.x[-1]
 
             h2_yield_power_net = h2_yield_energy / hours
-            h2_yield_power_gross = h2_yield_power_net  # / soh / self._efficiency_learning_rate
+            h2_yield_power_gross = h2_yield_power_net
 
             # Handle floating point fuzziness
             if np.isclose(h2_yield_power_gross, min_h2_yield_power_gross, rtol=1e-9, atol=1e-9):
