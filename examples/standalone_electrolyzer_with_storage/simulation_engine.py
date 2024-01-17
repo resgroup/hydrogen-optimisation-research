@@ -78,6 +78,14 @@ class Simulator:
     def run(self):
         start_time = time.time()
         self._df = self._df.apply(lambda row: self._calculate_dispatch(row), axis=1)
+
+        # TODO: Add Valuer class
+        self._df['grid_import'] = (self._df['PostExportllOffsitePower'] *
+                                   self._df['seconds'] / 3600.0 / 1000.0
+                                   + self._df['poi'])
+
+        self._df.loc[self._df['grid_import'] > 0, 'grid_import'] = 0
+
         self._df.to_csv(os.path.join(self._output_path, 'results.csv'))
         print('time: ', time.time() - start_time)
         print(f'case_count: {self._controller.case_count}')
