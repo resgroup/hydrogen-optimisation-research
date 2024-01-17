@@ -9,7 +9,7 @@ from hoptimiser.system_layouts.components.stack import Stack
 
 
 class ElectrolyzerUnit:
-    def __init__(self, stack: Stack, commissioning_year: int, operational_years: int, name: str = 'Electrolyzer Unit',):
+    def __init__(self, stack: Stack, commissioning_year: int, operational_years: int, name: str = 'Electrolyzer Unit'):
 
         # self._validate_inputs(stack, max_rated_power, degradation_pct_per_hr, rebuild_allowed, lifetime_hours)
 
@@ -37,7 +37,6 @@ class ElectrolyzerUnit:
 
     def _validate_inputs(self):
         raise NotImplementedError('Method _validate_inputs() has not been implemented.')
-        pass
 
     def _get_hours(self, seconds: float) -> float:
         return seconds / 3600.0
@@ -86,14 +85,15 @@ class ElectrolyzerUnit:
 
     def _get_efficiency_lookup_table(self) -> pd.DataFrame:
         input_power_train = self._rated_power * np.array(self._stack.efficiency_table['power_ratio'])
-        efficiency_train = np.array(
-            self._stack.efficiency_table['efficiency']) * self._efficiency_learning_rate * self._soh
+        efficiency_train = (np.array(self._stack.efficiency_table['efficiency'])
+                            * self._efficiency_learning_rate
+                            * self._soh)
 
         # TODO: Delete print
         print(f'efficency_learning_rate: {self._efficiency_learning_rate}, soh: {self._soh}, deg: {self._degradation}')
 
-        df_tmp = pd.DataFrame(
-            data={'power_ratio': self._stack.efficiency_table['power_ratio'], 'efficiency': efficiency_train})
+        # df_tmp = pd.DataFrame(data={'power_ratio': self._stack.efficiency_table['power_ratio'],
+        #                             'efficiency': efficiency_train})
         # df_tmp.to_csv('z_efficiency_curve_scaled.csv')
 
         # Interpolates using a cubic spline over interval input_power[1:]
