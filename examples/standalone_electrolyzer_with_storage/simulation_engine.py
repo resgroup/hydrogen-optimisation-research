@@ -15,11 +15,9 @@ class Simulator:
         self._output_path = self._kwargs['output_path']
         print(self._output_path)
         self._create_directory_if_not_exists(path=self._output_path)
-        # self._system_layout = SystemLayout(kwargs=kwargs)
         self._controller = Controller(system_layout=SystemLayout(output_directory='.', kwargs=kwargs), kwargs=kwargs)
 
         self._df = self._load_csv_data_source()
-        # self._df.to_csv('z_test.csv')
         self._results = []
 
     def _create_directory_if_not_exists(self, path: str):
@@ -61,18 +59,6 @@ class Simulator:
         row['efficiency_learning_rate'] = self._controller.system_layout.electrolyzer._efficiency_learning_rate
         row['h2_to_demand'] = h2_to_demand * 1e-3
 
-        # self._results.append({
-        #     'hydrogen_storage_unit': self._controller.system_layout.h2_storage.power,
-        #     'tank_in_mwh_h2': self._controller.system_layout.h2_storage.tank.charge_mwh_h2,
-        #     'tank_out_mwh_h2': self._controller.system_layout.h2_storage.tank.discharge_mwh_h2,
-        #     'tank_leakage_mwh_h2': self._controller.system_layout.h2_storage.tank.leakage_mwh_h2,
-        #     'tank_stored_mwh_h2': self._controller.system_layout.h2_storage.tank.stored_mwh_h2,
-        #     'electrolyzer_unit': electrolyzer_power,
-        #     'h2_yield_energy': electrolyzer_h2_yield_energy,
-        #     'soh': self._controller.system_layout.electrolyzer.soh,
-        #     'degradation_learning_rate': self._controller.system_layout.electrolyzer._efficiency_learning_rate,
-        #     'h2_to_demand': h2_to_demand,
-        # })
         return row
 
     def run(self):
