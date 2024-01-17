@@ -25,7 +25,7 @@ class HydrogenStorageUnit:
         if not isinstance(compressor, HydrogenCompressor):
             raise TypeError('The compressor object must be an instance of class HydrogenCompressor.')
 
-    def _get_hours(self, seconds: float):
+    def _get_hours(self, seconds: float) -> float:
         return seconds / 3600.0
 
     def _charge(self, charge_rate_mw_h2: float, seconds: float):
@@ -53,10 +53,6 @@ class HydrogenStorageUnit:
                                  f"{self._tank.capacity_mwh_h2} MWh-H2 has stored hydrogen {self._tank.stored_mwh_h2} MWh-H2 "
                                  f"after dispatching H2 energy flow of {energy_flow_mw_h2} MWh-H2 "
                                  f"for {seconds} seconds.")
-
-    def request_power(self, dispatch_instruction, **kwargs):
-        dispatch_instruction.component_power_required_dict.update({self.name: self._power})
-        return dispatch_instruction
 
     def update_counters(self, energy_flow_mw_h2, seconds):
         hours = seconds / 3600
