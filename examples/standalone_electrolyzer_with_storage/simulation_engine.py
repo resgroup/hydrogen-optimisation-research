@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from hoptimiser.system_layouts.topologies.standalone_electrolzyer_with_storage import SystemLayout
-from examples.standalone_electrolyzer_with_storage.controller import Controller
+from examples.standalone_electrolyzer_with_storage.controller import Controller, LPController
 
 
 class Simulator:
@@ -15,7 +15,11 @@ class Simulator:
         self._output_path = self._kwargs['output_path']
         print(self._output_path)
         self._create_directory_if_not_exists(path=self._output_path)
+
         self._controller = Controller(system_layout=SystemLayout(output_directory='.', kwargs=kwargs), kwargs=kwargs)
+        self._lp_controller = LPController(system_layout=SystemLayout(output_directory='.',
+                                                                      kwargs=kwargs),
+                                           kwargs=kwargs)
 
         self._df = self._load_csv_data_source()
         self._results = []
@@ -61,6 +65,26 @@ class Simulator:
 
         return row
 
+    def _lp_calculate_dispatch(self, row: pd.Series):
+        (electrolyzer_power, electrolyzer_h2_yield_energy,
+         tank_response_kwh_h2, h2_to_demand) = self._lp_controller._request_import_power_at_electrolyzer(row=row)
+
+        hours = row['seconds'] / 3600.0
+        row['poi'] = ((electrolyzer_power + self._lp_controller.system_layout.h2_storage.power)
+                      / self._kwargs['hv_trafo_efficiency'] * hours * 1e-3)
+
+        row['hydrogen_storage_unit'] = self._lp_controller.system_layout.h2_storage.power * hours * 1e-3
+        row['tank_in_mwh_h2'] = self._lp_controller.system_layout.h2_storage.tank.charge_mwh_h2
+        row['tank_out_mwh_h2'] = self._lp_controller.system_layout.h2_storage.tank.discharge_mwh_h2
+        row['tank_leakage_mwh_h2'] = self._lp_controller.system_layout.h2_storage.tank.leakage_mwh_h2
+        row['tank_stored_mwh_h2'] = self._lp_controller.system_layout.h2_storage.tank.stored_mwh_h2
+        row['electrolyzer_unit'] = electrolyzer_power * hours * 1e-3
+        row['h2_yield_energy'] = electrolyzer_h2_yield_energy * 1e-3
+        row['soh'] = self._lp_controller.system_layout.electrolyzer.soh
+        row['efficiency_learning_rate'] = self._lp_controller.system_layout.electrolyzer._efficiency_learning_rate
+        row['h2_to_demand'] = h2_to_demand * 1e-3
+        return row
+
     def run(self):
         start_time = time.time()
         self._df = self._df.apply(lambda row: self._calculate_dispatch(row), axis=1)
@@ -81,6 +105,27 @@ class Simulator:
         self._df.to_csv(os.path.join(self._output_path, 'results.csv'))
         print('time: ', time.time() - start_time)
         print(f'case_count: {self._controller.case_count}')
+
+    def lp_run(self):
+        start_time = time.time()
+        self._df = self._df.loc[0:84, :]
+        self._df = self._df.apply(lambda row: self._lp_calculate_dispatch(row), axis=1)
+        # TODO: Add Valuer class
+        self._df['grid_import'] = (self._df['PostExportllOffsitePower'] *
+                                   self._df['seconds'] / 3600.0 / 1000.0
+                                   + self._df['poi'])
+
+        self._df.loc[self._df['grid_import'] > 0, 'grid_import'] = 0
+
+        self._df['offsite_spill'] = (self._df['PostExportllOffsitePower'] *
+                                     self._df['seconds'] / 3600.0 / 1000.0
+                                     + self._df['poi'])
+
+        self._df.loc[self._df['offsite_spill'] < 0, 'offsite_spill'] = 0
+
+        self._df.to_csv(os.path.join(self._output_path, 'results_lp.csv'))
+
+        print('time: ', time.time() - start_time)
 
 
 if __name__ == '__main__':
@@ -152,4 +197,5 @@ if __name__ == '__main__':
                                                    / kwargs["tank_count"])
 
     sim = Simulator(kwargs)
-    sim.run()
+    # sim.run()
+    sim.lp_run()
