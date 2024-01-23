@@ -334,28 +334,35 @@ class LPController:
                                              tank_possible_discharge_kwh_h2)
         h2_demand_energy = LpVariable('h2_demand_energy', h2_demand_min_energy, h2_demand_max_energy)
 
-        # Objective function
+        # Objective function to minimize
         model += offsite_h2_yield_energy + storage_response_energy + grid_import_energy - h2_demand_energy
 
         # Constraints
         model += offsite_h2_yield_energy + storage_response_energy + grid_import_energy - h2_demand_energy >= 0
         model += offsite_h2_yield_energy + grid_import_energy >= electrolyzer_min_h2_yield_energy
         model += offsite_h2_yield_energy + grid_import_energy <= electrolyzer_max_h2_yield_energy
-        model += storage_response_energy <= offsite_h2_yield_energy_max - h2_demand_min_energy
-        model += storage_response_energy >= -(offsite_h2_yield_energy_max - h2_demand_min_energy)
+
+        if h2_demand_min_energy >= offsite_h2_yield_energy_max:
+            # Discharge (positive energy)
+            model += storage_response_energy == min(h2_demand_min_energy - offsite_h2_yield_energy_max,
+                                                    tank_possible_discharge_kwh_h2)
+        else:
+            # Charge (negative energy)
+            model += storage_response_energy == max(h2_demand_min_energy - offsite_h2_yield_energy_max,
+                                                    tank_possible_charge_kwh_h2)
 
         # Solve
         # model.solve(PULP_CBC_CMD(logPath=r'pulp.log'))
         model.solve(PULP_CBC_CMD(msg=False, keepFiles=False))
         results = {v.name: v.varValue for v in model.variables()}
         results['objective_value'] = value(model.objective)
-        print(results)
+        # print('    ', results)
         return results
 
     def _request_import_power_at_electrolyzer(self, row: pd.Series) -> Tuple[float, float, float, float]:
         seconds = row['seconds']
         hours = seconds / 3600.0
-        print(row.name)
+        # print(row.name)
         # TODO: Limit POI import power.
         poi_offsite_power = -row['PostExportllOffsitePower']
         offsite_power_max = poi_offsite_power * self._kwargs['hv_trafo_efficiency']

@@ -108,7 +108,7 @@ class Simulator:
 
     def lp_run(self):
         start_time = time.time()
-        self._df = self._df.loc[0:84, :]
+        # self._df = self._df.loc[0:84, :]
         self._df = self._df.apply(lambda row: self._lp_calculate_dispatch(row), axis=1)
         # TODO: Add Valuer class
         self._df['grid_import'] = (self._df['PostExportllOffsitePower'] *
