@@ -85,6 +85,7 @@ class Simulator:
 
 if __name__ == '__main__':
     # NOTE: Setup for Boiler\Coleshill V2 Boiler 2023-03-21 16.13.46\Reports\2333906440
+    os.chdir(r'C:\\Users\\tyoung\\Documents\\GitHub\\hydrogen-optimisation-research')
     kwargs = {"output_path": 'examples/standalone_electrolyzer_with_storage/output',
               "csv_data_source": "examples/standalone_electrolyzer_with_storage/data/final/Coleshill V2 Boiler 2023-03-21 16.13.46_2333906440_2017.csv",
               "datetime_column": "DateTime",
