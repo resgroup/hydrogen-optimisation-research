@@ -328,34 +328,25 @@ class LPController:
 
         model = LpProblem("Minimize_grid_import", LpMinimize)
         offsite_h2_yield_energy = LpVariable('offsite_h2_yield_energy', 0.0, offsite_h2_yield_energy_max)
-        grid_import_energy = LpVariable('grid_import_energy', 0.0, h2_demand_min_energy)
         storage_response_energy = LpVariable('storage_response_energy',
                                              tank_possible_charge_kwh_h2,
                                              tank_possible_discharge_kwh_h2)
         h2_demand_energy = LpVariable('h2_demand_energy', h2_demand_min_energy, h2_demand_max_energy)
 
         # Objective function to minimize
-        model += offsite_h2_yield_energy + storage_response_energy + grid_import_energy - h2_demand_energy
+        model += h2_demand_energy - offsite_h2_yield_energy - storage_response_energy #this is equivalent to grid_import_energy
 
         # Constraints
-        model += offsite_h2_yield_energy + storage_response_energy + grid_import_energy - h2_demand_energy >= 0
-        model += offsite_h2_yield_energy + grid_import_energy >= electrolyzer_min_h2_yield_energy
-        model += offsite_h2_yield_energy + grid_import_energy <= electrolyzer_max_h2_yield_energy
+        model += h2_demand_energy - offsite_h2_yield_energy - storage_response_energy >= 0
+        model += h2_demand_energy - storage_response_energy >= electrolyzer_min_h2_yield_energy
+        model += h2_demand_energy - storage_response_energy <= electrolyzer_max_h2_yield_energy
+        #this next constraint ensures that we fill the tank when we can. Discharge happens automatically when needed
+        model += storage_response_energy == max(tank_possible_charge_kwh_h2, h2_demand_min_energy - offsite_h2_yield_energy_max)
 
-        if h2_demand_min_energy >= offsite_h2_yield_energy_max:
-            # Discharge (positive energy)
-            model += storage_response_energy == min(h2_demand_min_energy - offsite_h2_yield_energy_max,
-                                                    tank_possible_discharge_kwh_h2)
-        else:
-            # Charge (negative energy)
-            model += storage_response_energy == max(h2_demand_min_energy - offsite_h2_yield_energy_max,
-                                                    tank_possible_charge_kwh_h2)
-
-        # Solve
-        # model.solve(PULP_CBC_CMD(logPath=r'pulp.log'))
         model.solve(PULP_CBC_CMD(msg=False, keepFiles=False))
         results = {v.name: v.varValue for v in model.variables()}
         results['objective_value'] = value(model.objective)
+        results['grid_import_energy'] = results['objective_value']
         # print('    ', results)
         return results
 
