@@ -333,15 +333,20 @@ class LPController:
                                              tank_possible_discharge_kwh_h2)
         h2_demand_energy = LpVariable('h2_demand_energy', h2_demand_min_energy, h2_demand_max_energy)
 
-        # Objective function to minimize
-        model += h2_demand_energy - offsite_h2_yield_energy - storage_response_energy #this is equivalent to grid_import_energy
+        # Minimise the dirty energy imported from the grid:
+        model += h2_demand_energy - offsite_h2_yield_energy - storage_response_energy
 
         # Constraints
+        #Grid imports can never be negative:
         model += h2_demand_energy - offsite_h2_yield_energy - storage_response_energy >= 0
+        #Electroyzer production must be within technical bounds:
         model += h2_demand_energy - storage_response_energy >= electrolyzer_min_h2_yield_energy
         model += h2_demand_energy - storage_response_energy <= electrolyzer_max_h2_yield_energy
-        #this next constraint ensures that we fill the tank when we can. Discharge happens automatically when needed
-        model += storage_response_energy == max(tank_possible_charge_kwh_h2, h2_demand_min_energy - offsite_h2_yield_energy_max)
+        #We should always fill the tank when we can:
+        if h2_demand_min_energy - offsite_h2_yield_energy_max > 0:
+            model += storage_response_energy == min(tank_possible_discharge_kwh_h2, h2_demand_min_energy - offsite_h2_yield_energy_max)
+        else:
+            model += storage_response_energy == max(tank_possible_charge_kwh_h2, h2_demand_min_energy - offsite_h2_yield_energy_max)
 
         model.solve(PULP_CBC_CMD(msg=False, keepFiles=False))
         results = {v.name: v.varValue for v in model.variables()}
