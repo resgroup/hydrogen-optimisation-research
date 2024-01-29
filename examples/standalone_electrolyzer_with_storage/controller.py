@@ -15,6 +15,88 @@ class Controller:
         self._kwargs = kwargs
         self.case_count = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
 
+    def control_algorithm(self, h2_demand_min_energy: float, h2_demand_max_energy: float,
+               tank_possible_charge_kwh_h2: float, tank_possible_discharge_kwh_h2: float,
+               electrolyzer_min_h2_yield_energy: float, electrolyzer_max_h2_yield_energy: float,
+               offsite_h2_yield_energy: float) -> Tuple[float, float]:
+
+        electrolyzer_clean_h2_yield_energy_to_meet_minimum = 0
+
+        if h2_demand_min_energy > 1E-9:
+            electrolyzer_clean_h2_yield_energy_to_meet_minimum = max(min(h2_demand_min_energy, offsite_h2_yield_energy, electrolyzer_max_h2_yield_energy),electrolyzer_min_h2_yield_energy)
+
+            if electrolyzer_max_h2_yield_energy + tank_possible_discharge_kwh_h2 < h2_demand_min_energy:
+                raise Exception('The electrolyzer and storage combination can NOT meet the minimum H2 demand.')
+
+            if electrolyzer_min_h2_yield_energy > h2_demand_max_energy - tank_possible_charge_kwh_h2:
+                raise Exception('Insufficient H2 demand and storage capacity to run electrolyser.')
+
+        useable_offsite_h2_yield_energy = min(offsite_h2_yield_energy, electrolyzer_max_h2_yield_energy)
+
+        tank_response_kwh_h2_discharge = min(tank_possible_discharge_kwh_h2, max(h2_demand_min_energy - electrolyzer_clean_h2_yield_energy_to_meet_minimum, 0))
+        tank_response_kwh_h2_charge = max(tank_possible_charge_kwh_h2, min(h2_demand_min_energy, electrolyzer_clean_h2_yield_energy_to_meet_minimum) - max(useable_offsite_h2_yield_energy, electrolyzer_min_h2_yield_energy))
+        tank_response_kwh_h2 = tank_response_kwh_h2_discharge + tank_response_kwh_h2_charge
+
+        electrolyzer_clean_h2_yield_energy = min(h2_demand_max_energy - tank_response_kwh_h2, offsite_h2_yield_energy, electrolyzer_max_h2_yield_energy)
+        electrolyzer_dirty_h2_yield_energy = max(0, h2_demand_min_energy - electrolyzer_clean_h2_yield_energy - tank_response_kwh_h2, electrolyzer_min_h2_yield_energy - electrolyzer_clean_h2_yield_energy)
+        electrolyzer_h2_yield_energy = electrolyzer_clean_h2_yield_energy + electrolyzer_dirty_h2_yield_energy
+
+        return electrolyzer_h2_yield_energy, tank_response_kwh_h2
+
+    def _request_import_power_at_electrolyzer(self, row: pd.Series) -> Tuple[float, float, float, float]:
+        seconds = row['seconds']
+        hours = seconds / 3600.0
+
+        # TODO: Limit POI import power.
+        poi_offsite_power = -row['PostExportllOffsitePower']
+        offsite_power = poi_offsite_power * self._kwargs['hv_trafo_efficiency']
+
+        # Tank charge is a negative value and discharge positive.
+        h2_demand_min_energy = row['h2_demand_min']
+        h2_demand_max_energy = row['h2_demand_max']
+
+        tank_possible_charge_kwh_h2 = (1e3
+                                       * self._system_layout.h2_storage.tank._get_possible_charge_rate(seconds=seconds)
+                                       * hours)
+        tank_possible_discharge_kwh_h2 = (1e3
+                                          * self._system_layout.h2_storage.tank._get_possible_discharge_rate(seconds=seconds)
+                                          * hours)
+
+        offsite_h2_yield_energy = self._system_layout.electrolyzer._get_h2_yield_energy(power=offsite_power,
+                                                                                        seconds=seconds)
+
+        electrolyzer_min_h2_yield_energy = self._system_layout.electrolyzer.min_h2_yield_power * hours
+        electrolyzer_max_h2_yield_energy = self._system_layout.electrolyzer.max_h2_yield_power * hours
+
+        electrolyzer_h2_yield_energy, tank_response_kwh_h2 = self.control_algorithm(h2_demand_min_energy=h2_demand_min_energy,
+                                                                             h2_demand_max_energy=h2_demand_max_energy,
+                                                                             tank_possible_charge_kwh_h2=tank_possible_charge_kwh_h2,
+                                                                             tank_possible_discharge_kwh_h2=tank_possible_discharge_kwh_h2,
+                                                                             electrolyzer_min_h2_yield_energy=electrolyzer_min_h2_yield_energy,
+                                                                             electrolyzer_max_h2_yield_energy=electrolyzer_max_h2_yield_energy,
+                                                                             offsite_h2_yield_energy=offsite_h2_yield_energy)
+
+        electrolyzer_power = self._system_layout.electrolyzer._get_power(h2_yield_energy=electrolyzer_h2_yield_energy,
+                                                                         seconds=seconds)
+        self._system_layout.h2_storage.dispatch_h2_storage(
+            energy_flow_mw_h2=1e-3 * tank_response_kwh_h2 / hours, seconds=seconds)
+
+        self._system_layout.h2_to_demand = electrolyzer_h2_yield_energy + tank_response_kwh_h2
+
+        h2_to_demand = electrolyzer_h2_yield_energy + tank_response_kwh_h2
+
+        return electrolyzer_power, electrolyzer_h2_yield_energy, tank_response_kwh_h2, h2_to_demand
+
+    @property
+    def system_layout(self):
+        return self._system_layout
+
+class ControllerOld:
+    def __init__(self, system_layout: SystemLayout, kwargs: Dict) -> None:
+        self._system_layout = system_layout
+        self._kwargs = kwargs
+        self.case_count = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
+
     def case_1(self, h2_demand_min_energy: float, h2_demand_max_energy: float,
                tank_possible_charge_kwh_h2: float, tank_possible_discharge_kwh_h2: float,
                electrolyzer_min_h2_yield_energy: float, electrolyzer_max_h2_yield_energy: float,
@@ -80,39 +162,31 @@ class Controller:
         (electrolyzer_min_h2_yield_energy <= h2_demand_min_energy) and (
             electrolyzer_max_h2_yield_energy > h2_demand_max_energy)
         """
-        #
-        electrolyzer_clean_h2_yield_energy_to_meet_minimum = min(h2_demand_min_energy, offsite_h2_yield_energy)
-        tank_response_kwh_h2_discharge = min(tank_possible_discharge_kwh_h2, h2_demand_min_energy - electrolyzer_clean_h2_yield_energy_to_meet_minimum)
-        tank_response_kwh_h2_charge = max(tank_possible_charge_kwh_h2, electrolyzer_clean_h2_yield_energy_to_meet_minimum - offsite_h2_yield_energy)
-        tank_response_kwh_h2 = tank_response_kwh_h2_discharge + tank_response_kwh_h2_charge
-        electrolyzer_clean_h2_yield_energy = min(h2_demand_max_energy - tank_response_kwh_h2, offsite_h2_yield_energy)
-        electrolyzer_dirty_h2_yield_energy = max(0, h2_demand_min_energy - electrolyzer_clean_h2_yield_energy - tank_response_kwh_h2)
-        electrolyzer_h2_yield_energy = electrolyzer_clean_h2_yield_energy + electrolyzer_dirty_h2_yield_energy
 
-        #
-        # if np.isclose(offsite_h2_yield_energy, 0.0, rtol=1e-9, atol=1e-9):
-        #     if (tank_possible_discharge_kwh_h2 >= h2_demand_min_energy):
-        #         electrolyzer_h2_yield_energy = 0.0
-        #         # Discharge
-        #         tank_response_kwh_h2 = h2_demand_min_energy
-        #     else:
-        #         electrolyzer_h2_yield_energy = max(h2_demand_min_energy - tank_possible_discharge_kwh_h2,
-        #                                            electrolyzer_min_h2_yield_energy)
-        #         # Discharge
-        #         tank_response_kwh_h2 = h2_demand_min_energy - electrolyzer_h2_yield_energy
-        #
-        # elif 0.0 < offsite_h2_yield_energy <= h2_demand_min_energy:
-        #     electrolyzer_h2_yield_energy = max(h2_demand_min_energy - tank_possible_discharge_kwh_h2,
-        #                                        offsite_h2_yield_energy)
-        #     # Discharge
-        #     tank_response_kwh_h2 = h2_demand_min_energy - electrolyzer_h2_yield_energy
-        # else:
-        #     # NOTE: tank_possible_charge_kwh_h2 is a negative value
-        #     electrolyzer_h2_yield_energy = min(h2_demand_max_energy - tank_possible_charge_kwh_h2,
-        #                                        offsite_h2_yield_energy)
-        #     # Charge
-        #     tank_response_kwh_h2 = -min(electrolyzer_h2_yield_energy - h2_demand_min_energy,
-        #                                 -tank_possible_charge_kwh_h2)
+
+        if np.isclose(offsite_h2_yield_energy, 0.0, rtol=1e-9, atol=1e-9):
+            if (tank_possible_discharge_kwh_h2 >= h2_demand_min_energy):
+                electrolyzer_h2_yield_energy = 0.0
+                # Discharge
+                tank_response_kwh_h2 = h2_demand_min_energy
+            else:
+                electrolyzer_h2_yield_energy = max(h2_demand_min_energy - tank_possible_discharge_kwh_h2,
+                                                   electrolyzer_min_h2_yield_energy)
+                # Discharge
+                tank_response_kwh_h2 = h2_demand_min_energy - electrolyzer_h2_yield_energy
+
+        elif 0.0 < offsite_h2_yield_energy <= h2_demand_min_energy:
+            electrolyzer_h2_yield_energy = max(h2_demand_min_energy - tank_possible_discharge_kwh_h2,
+                                               offsite_h2_yield_energy)
+            # Discharge
+            tank_response_kwh_h2 = h2_demand_min_energy - electrolyzer_h2_yield_energy
+        else:
+            # NOTE: tank_possible_charge_kwh_h2 is a negative value
+            electrolyzer_h2_yield_energy = min(h2_demand_max_energy - tank_possible_charge_kwh_h2,
+                                               offsite_h2_yield_energy)
+            # Charge
+            tank_response_kwh_h2 = -min(electrolyzer_h2_yield_energy - h2_demand_min_energy,
+                                        -tank_possible_charge_kwh_h2)
 
         return electrolyzer_h2_yield_energy, tank_response_kwh_h2
 
@@ -324,6 +398,7 @@ class Controller:
     @property
     def system_layout(self):
         return self._system_layout
+
 
 
 class LPController:
