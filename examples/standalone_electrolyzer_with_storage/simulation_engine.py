@@ -1,12 +1,14 @@
 from typing import Dict
 import os
 import time
+import json
 
 import numpy as np
 import pandas as pd
 
 from hoptimiser.system_layouts.topologies.standalone_electrolzyer_with_storage import SystemLayout
-from examples.standalone_electrolyzer_with_storage.controller import Controller, LPController
+from hoptimiser.config import PROJECT_ROOT_DIR
+from examples.standalone_electrolyzer_with_storage.controller import Controller, LPController, ControllerOld
 
 
 class Simulator:
@@ -16,6 +18,7 @@ class Simulator:
         print(self._output_path)
         self._create_directory_if_not_exists(path=self._output_path)
 
+        # self._controller = ControllerOld(system_layout=SystemLayout(output_directory='.', kwargs=kwargs), kwargs=kwargs)
         self._controller = Controller(system_layout=SystemLayout(output_directory='.', kwargs=kwargs), kwargs=kwargs)
         self._lp_controller = LPController(system_layout=SystemLayout(output_directory='.',
                                                                       kwargs=kwargs),
@@ -128,9 +131,25 @@ class Simulator:
         print('time: ', time.time() - start_time)
 
 
-if __name__ == '__main__':
+def get_kwargs_from_json(file_path):
+    with open(file_path) as f:
+        kwargs = json.load(f)
+
+    if kwargs["compressor_unit_rated_charge_rate_mw_h2"] == '-inf':
+        kwargs["compressor_unit_rated_charge_rate_mw_h2"] = np.NINF
+
+    if kwargs['tank_unit_rated_discharge_rate_mw_h2'] == 'inf':
+        kwargs['tank_unit_rated_discharge_rate_mw_h2'] == np.Inf
+
+    kwargs["tank_unit_rated_charge_rate_mw_h2"] = (kwargs["compressor_unit_rated_charge_rate_mw_h2"]
+                                                   * kwargs["compressor_count"]
+                                                   / kwargs["tank_count"])
+    return kwargs
+
+
+def get_kwargs():
     # NOTE: Setup for Boiler\Coleshill V2 Boiler 2023-03-21 16.13.46\Reports\2333906440
-    kwargs = {"output_path": 'examples/standalone_electrolyzer_with_storage/output',
+    kwargs = {"output_path": 'examples/standalone_electrolyzer_with_storage/output/coleshill_v2_boiler_20230321_16.13.46_2333906440_2017',
               "csv_data_source": "examples/standalone_electrolyzer_with_storage/data/final/Coleshill V2 Boiler 2023-03-21 16.13.46_2333906440_2017.csv",
               "datetime_column": "DateTime",
               "datetime_format": "%Y-%m-%d %H:%M:%S",
@@ -195,7 +214,18 @@ if __name__ == '__main__':
     kwargs["tank_unit_rated_charge_rate_mw_h2"] = (kwargs["compressor_unit_rated_charge_rate_mw_h2"]
                                                    * kwargs["compressor_count"]
                                                    / kwargs["tank_count"])
+    return kwargs
+
+
+if __name__ == '__main__':
+    inputs_file_path = os.path.join(PROJECT_ROOT_DIR, 'examples',
+                                    'standalone_electrolyzer_with_storage', 'northfleet.json')
+    # inputs_file_path = os.path.join(PROJECT_ROOT_DIR, 'examples', 'standalone_electrolyzer_with_storage',
+    #                                 'coleshill_v2_boiler_20230321_16.13.46_2333906440.json')
+
+    kwargs = get_kwargs_from_json(file_path=inputs_file_path)
+    # kwargs = get_kwargs()
 
     sim = Simulator(kwargs)
-    # sim.run()
-    sim.lp_run()
+    sim.run()
+    # sim.lp_run()
