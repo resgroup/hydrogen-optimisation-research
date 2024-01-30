@@ -109,7 +109,6 @@ batch_submission/
 # *.json
 *.png
 *.ipynb
-*config.py
 
 output/
 data/
