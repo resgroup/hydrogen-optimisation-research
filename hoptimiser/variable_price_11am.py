@@ -14,10 +14,10 @@ data['Hour'] = data.Time.dt.hour
 data['Day'] = data.Time.dt.date
 
 max_storage_kwh = 25944.4
-min_storage_kwh = 0
+min_storage_kwh = 2000.0
 storage_max_charge_rate_kw_h2 = 4000
 
-starting_storage_kwh = 0#max_storage_kwh / 2
+starting_storage_kwh = max_storage_kwh / 2
 
 electrolyser_max_power = 20000
 electrolyser_min_power = electrolyser_max_power * 0.1
@@ -37,20 +37,12 @@ results_df = pd.DataFrame(columns=['datetime','price','h2_demand_kWh','h2_produc
 
 solver_time_taken = datetime.timedelta(0)
 
-#todo print remaining charge at end of each day to see the distribution. Do we want to set a minimum on this for safety?
-
-i = 0
-day_start_storage_remaining = pd.DataFrame(columns=['remaining'])
 for day in data['Day'].unique()[0:len(data['Day'].unique())-1]:
 
     day_results_df = pd.DataFrame(columns=['datetime','price','h2_demand_kWh','h2_produced_kWh','h2_to_storage_kWh','h2_in_storage_kWh'])
 
-    data_day = data.loc[(data['Day'] == day), :]
+    data_day = data.loc[((data['Day'] == day) & (data['Hour'] >= 11)) | (data['Day'] == day + datetime.timedelta(days=1)), :]
 
-    #Guess that first 12 hours of following day will have the same price and demand as this day:
-
-    data_day = data_day.reset_index()
-    data_day = pd.concat([data_day, data_day.loc[0:23, :]])
     data_day = data_day.reset_index()
 
     date_array = data_day.Time
@@ -68,19 +60,14 @@ for day in data['Day'].unique()[0:len(data['Day'].unique())-1]:
 
     day_start_h2_in_storage_kwh = day_results_df['h2_in_storage_kWh'][47]
 
-    day_start_storage_remaining.loc[i, 'date'] = day_results_df['datetime'][47]
-    day_start_storage_remaining.loc[i,'remaining'] = day_start_h2_in_storage_kwh
-    i += 1
     total_cost += day_results_df['h2_cost'].sum()
 
     results_df = pd.concat([results_df, day_results_df])
-
 
 print(total_cost/1000000)
 
 results_df.to_csv('results.csv')
 
-day_start_storage_remaining.to_csv('daystart.csv')
 end_time = datetime.datetime.now()
 
 time_taken = end_time - start_time
