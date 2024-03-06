@@ -13,13 +13,13 @@ data.Time = pd.to_datetime(data.Time, dayfirst=True)
 data['Hour'] = data.Time.dt.hour
 data['Day'] = data.Time.dt.date
 
-max_storage_kwh = 25944.4
-min_storage_kwh = 2000.0
-storage_max_charge_rate_kw_h2 = 4000
+max_storage_kwh = 55944.4
+min_storage_kwh = 0
+storage_max_charge_rate_kw_h2 = 20000
 
-starting_storage_kwh = max_storage_kwh / 2
+starting_storage_kwh = 0#max_storage_kwh / 2
 
-electrolyser_max_power = 20000
+electrolyser_max_power = 40000
 electrolyser_min_power = electrolyser_max_power * 0.1
 electrolyser_efficiency = 0.615
 
