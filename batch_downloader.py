@@ -31,9 +31,24 @@ class BatchDownloader:
             blob_content = json.loads(blob_content.readall())
             df = pd.concat([df, pd.DataFrame(blob_content, index=[idx])])
         df.to_csv(f'{self.analysis_name}_summary.csv')
-        return df
+
+    def download_results(self, ez_storage_kwh: int, ez_power_kw: int) -> None:
+        blob_names = self._list_blob_names(target_filename='results.csv')
+        blob_name = f'{ez_power_kw}kw-{ez_storage_kwh}kwh/results.csv'
+        if blob_name not in blob_names:
+            raise ValueError(
+                f'No results.csv found for {ez_power_kw}kw-{ez_storage_kwh}kwh')
+        else:
+            blob_client = self.container_client.get_blob_client(blob=blob_name)
+            blob_content = blob_client.download_blob()
+            with open(f'{ez_power_kw}kw-{ez_storage_kwh}kwh_results.csv', 'wb') as f:
+                f.write(blob_content.readall())
 
 
 if __name__ == "__main__":
     batch_downloader = BatchDownloader(analysis_name='luke-hoptimiser-test')
     batch_downloader.download_summary()
+    # batch_downloader.download_results(
+    #     ez_power_kw=1000,
+    #     ez_storage_kwh=3000,
+    # )
