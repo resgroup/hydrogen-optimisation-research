@@ -30,10 +30,10 @@ class BatchDownloader:
             blob_content = blob_client.download_blob()
             blob_content = json.loads(blob_content.readall())
             df = pd.concat([df, pd.DataFrame(blob_content, index=[idx])])
+        df.to_csv(f'{self.analysis_name}_summary.csv')
         return df
 
 
 if __name__ == "__main__":
     batch_downloader = BatchDownloader(analysis_name='luke-hoptimiser-test')
-    summary_df = batch_downloader.download_summary()
-    summary_df.to_csv(f'{batch_downloader.analysis_name}_summary.csv')
+    batch_downloader.download_summary()
