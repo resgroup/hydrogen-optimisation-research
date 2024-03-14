@@ -35,3 +35,4 @@ LOW_PRIORITY_POOL_NODE_COUNT=4
 within the `__main__` method of `batch_runner.py` as desired to specify the 
 desired solution space to explore.
 - Utilize the `batch_downloader.py` script to download a summary of results available on blob storage or a particular run.
+- Execute with: `python -m examples.azure_batch.batch_runner`
