@@ -30,68 +30,126 @@ class MultiDimensionalLpVariable:
         f = np.vectorize(lambda i: pulp.value(i))
         self.values = f(self.variables)
 
-def LPcontrol(data_day, date_array, price_array, h2_price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, min_h2_production_kwh, max_h2_production_kwh, max_h2_from_storage_kwh, max_h2_to_storage_kwh, max_storage_kwh, min_storage_kwh):
+def LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank):
 
     cost = 0
-    h2_produced_kWh = MultiDimensionalLpVariable('h2_produced_kWh', len(data_day), 0, max_h2_production_kwh, "Continuous")
-    h2_to_storage = MultiDimensionalLpVariable('h2_to_storage', len(data_day), -max_h2_from_storage_kwh, max_h2_to_storage_kwh, "Continuous")
-    electrolyser_turned_on = MultiDimensionalLpVariable('electrolyser_turned_on', len(data_day), 0, 1, cat = "Binary")
+
+    electrolyser_kW_level_1 = MultiDimensionalLpVariable('electrolyser_kW_1', len(data_day), 0, electrolyser.efficiency_load_factor_simplified[0] * electrolyser.max_power, "Continuous")
+    electrolyser_kW_level_2 = MultiDimensionalLpVariable('electrolyser_kW_2', len(data_day), 0, electrolyser.efficiency_load_factor_simplified[1] * electrolyser.max_power, "Continuous")
+    electrolyser_kW_level_3 = MultiDimensionalLpVariable('electrolyser_kW_3', len(data_day), 0, electrolyser.efficiency_load_factor_simplified[2] * electrolyser.max_power, "Continuous")
+    electrolyser_kW_level_4 = MultiDimensionalLpVariable('electrolyser_kW_4', len(data_day), 0, electrolyser.efficiency_load_factor_simplified[3] * electrolyser.max_power, "Continuous")
+    electrolyser_kW_level_5 = MultiDimensionalLpVariable('electrolyser_kW_5', len(data_day), 0, electrolyser.efficiency_load_factor_simplified[4] * electrolyser.max_power, "Continuous")
+
+    electrolyser_turned_on_level_1 = MultiDimensionalLpVariable('electrolyser_turned_on_1', len(data_day), 0, 1, cat = "Binary")
+    electrolyser_turned_on_level_2 = MultiDimensionalLpVariable('electrolyser_turned_on_2', len(data_day), 0, 1, cat = "Binary")
+    electrolyser_turned_on_level_3 = MultiDimensionalLpVariable('electrolyser_turned_on_3', len(data_day), 0, 1, cat = "Binary")
+    electrolyser_turned_on_level_4 = MultiDimensionalLpVariable('electrolyser_turned_on_4', len(data_day), 0, 1, cat = "Binary")
+    electrolyser_turned_on_level_5 = MultiDimensionalLpVariable('electrolyser_turned_on_5', len(data_day), 0, 1, cat = "Binary")
 
     h2_in_storage_kwh = day_start_h2_in_storage_kwh
 
     problem = LpProblem("Minimize_energy_cost_while_meeting_demand", LpMinimize)
 
-    for i in range(0,len(h2_price_array)):
-        cost += h2_produced_kWh[i] * h2_price_array[i]
+    for i in range(0, len(price_array)):
+        electrolyser_kW = electrolyser_kW_level_1[i] + electrolyser_kW_level_2[i] + electrolyser_kW_level_3[i] + electrolyser_kW_level_4[i] + electrolyser_kW_level_5[i]
+        cost += (electrolyser_kW / line_losses_after_poi) * price_array[i] * 0.5
 
     problem += cost
 
-    for i in range(0,len(h2_price_array)):
+    for i in range(0, len(price_array)):
 
-        h2_storage_space_available_kwh = max_storage_kwh - h2_in_storage_kwh
+        h2_produced_kWh = 0.5 * ((electrolyser_kW_level_1[i] * electrolyser.efficiency_simplified[0]) + (electrolyser_kW_level_2[i] * electrolyser.efficiency_simplified[1]) + (electrolyser_kW_level_3[i] * electrolyser.efficiency_simplified[2]) + (electrolyser_kW_level_4[i] * electrolyser.efficiency_simplified[3]) + (electrolyser_kW_level_5[i] * electrolyser.efficiency_simplified[4]))
 
-        demand_shortfall = demand_array[i] + h2_to_storage[i] - h2_produced_kWh[i]
-        storage_remaining = h2_in_storage_kwh + h2_to_storage[i]
-        storage_overfill = h2_to_storage[i] - h2_storage_space_available_kwh
+        h2_storage_space_available_kwh = tank.max_storage_kwh - h2_in_storage_kwh
 
-        h2_in_storage_kwh = h2_in_storage_kwh + h2_to_storage[i]
+        h2_to_storage = h2_produced_kWh - demand_array[i]
+        storage_remaining = h2_in_storage_kwh + h2_to_storage
+        storage_overfill = h2_to_storage - h2_storage_space_available_kwh
 
-        problem += demand_shortfall == 0
-        problem += storage_remaining >= min_storage_kwh
+        h2_in_storage_kwh = (h2_in_storage_kwh + h2_to_storage) * tank.remaining_fraction_after_half_hour
+
+        problem += storage_remaining >= tank.min_storage_kwh
         problem += storage_overfill <= 0
 
-        problem += h2_produced_kWh[i] <= electrolyser_turned_on[i] * max_h2_production_kwh
-        problem += h2_produced_kWh[i] >= electrolyser_turned_on[i] * min_h2_production_kwh
+        problem += electrolyser_kW_level_1[i] <= electrolyser_turned_on_level_1[i] * electrolyser.efficiency_load_factor_simplified[0] * electrolyser.max_power
+        problem += electrolyser_kW_level_1[i] >= electrolyser_turned_on_level_1[i] * electrolyser.min_power
 
-    problem.solve(PULP_CBC_CMD(msg=False, keepFiles=False, timeLimit=100.0))
+        problem += electrolyser_kW_level_2[i] <= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor_simplified[1] * electrolyser.max_power
+        problem += electrolyser_kW_level_2[i] >= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor_simplified[0] * electrolyser.max_power
+
+        problem += electrolyser_kW_level_3[i] <= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor_simplified[2] * electrolyser.max_power
+        problem += electrolyser_kW_level_3[i] >= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor_simplified[1] * electrolyser.max_power
+
+        problem += electrolyser_kW_level_4[i] <= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor_simplified[3] * electrolyser.max_power
+        problem += electrolyser_kW_level_4[i] >= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor_simplified[2] * electrolyser.max_power
+
+        problem += electrolyser_kW_level_5[i] <= electrolyser_turned_on_level_5[i] * electrolyser.efficiency_load_factor_simplified[4] * electrolyser.max_power
+        problem += electrolyser_kW_level_5[i] >= electrolyser_turned_on_level_5[i] * electrolyser.efficiency_load_factor_simplified[3] * electrolyser.max_power
+
+        problem += electrolyser_turned_on_level_1[i] + electrolyser_turned_on_level_2[i] + electrolyser_turned_on_level_3[i] + electrolyser_turned_on_level_4[i] + electrolyser_turned_on_level_5[i] <= 1
+
+    start_solver_time = datetime.datetime.now()
+
+    problem.solve(PULP_CBC_CMD(msg=False, keepFiles=False, timeLimit=lp_solver_time_limit_seconds))
+
+    end_solver_time = datetime.datetime.now()
+
+    solver_time = end_solver_time - start_solver_time
+
+    if not problem.status == 1:
+    #    raise Exception('Problem is infeasible for at least one time period')
+        print('Infeasible day:', data_day['Day'][0])
+
 
     # b = COIN(timeLimit=100.0, msg=False)
     # b.path = "cbc.exe"
     # b.solve(problem)
 
-    h2_produced_kWh.evaluate()
-    h2_produced_kWh_result = h2_produced_kWh.values
-    h2_to_storage.evaluate()
-    h2_to_storage_result = h2_to_storage.values
+    electrolyser_kW_level_1.evaluate()
+    electrolyser_kW_level_2.evaluate()
+    electrolyser_kW_level_3.evaluate()
+    electrolyser_kW_level_4.evaluate()
+    electrolyser_kW_level_5.evaluate()
+
+    electrolyser_kW_result = electrolyser_kW_level_1.values + electrolyser_kW_level_2.values + electrolyser_kW_level_3.values + electrolyser_kW_level_4.values + electrolyser_kW_level_5.values
 
     h2_in_storage_tracker = day_start_h2_in_storage_kwh
     h2_in_storage = np.zeros(48)
+    h2_to_storage = np.zeros(48)
     cost_array = np.zeros(48)
+    corrected_cost_array = np.zeros(48)
+
+    h2_produced_kWh_result = price_array.copy()
 
     for i in range(0,48):
-        cost_array[i] = h2_produced_kWh_result[i] * h2_price_array[i]
-        h2_in_storage_tracker = h2_in_storage_tracker + h2_to_storage_result[i]
+
+        h2_produced_kWh_result[i] = 0.5 * ((electrolyser_kW_level_1.values[i] * electrolyser.efficiency_simplified[0]) + (electrolyser_kW_level_2.values[i] * electrolyser.efficiency_simplified[1]) + (electrolyser_kW_level_3.values[i] * electrolyser.efficiency_simplified[2]) + (electrolyser_kW_level_4.values[i] * electrolyser.efficiency_simplified[3]) + (electrolyser_kW_level_5.values[i] * electrolyser.efficiency_simplified[4]))
+        h2_to_storage[i] = h2_produced_kWh_result[i] - demand_array[i]
+        real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.max_power, electrolyser.efficiency_load_factor, electrolyser.efficiency)
+        cost_array[i] = (electrolyser_kW_result[i] / line_losses_after_poi) * price_array[i] * 0.5
+        corrected_cost_array[i] = (h2_produced_kWh_result[i] * price_array[i]) / (real_efficiency * line_losses_after_poi)
+        h2_in_storage_tracker = (h2_in_storage_tracker + h2_to_storage[i]) * tank.remaining_fraction_after_half_hour
         h2_in_storage[i] = h2_in_storage_tracker
+
+    if any(h < 0 for h in h2_in_storage):
+        raise Exception('Negative storage found - control unsolveable!')
 
     day_results_df['datetime'] = date_array[0:48]
     day_results_df['price'] = price_array[0:48]
     day_results_df['h2_demand_kWh'] = demand_array[0:48]
-    day_results_df['h2_produced_kWh'] = h2_produced_kWh.values[0:48]
-    day_results_df['h2_to_storage_kWh'] = h2_to_storage.values[0:48]
+    day_results_df['electrolyser_kW'] = electrolyser_kW_result[0:48]
+    day_results_df['electrolyser_kW_1'] = electrolyser_kW_level_1.values[0:48]
+    day_results_df['electrolyser_kW_2'] = electrolyser_kW_level_2.values[0:48]
+    day_results_df['electrolyser_kW_3'] = electrolyser_kW_level_3.values[0:48]
+    day_results_df['electrolyser_kW_4'] = electrolyser_kW_level_4.values[0:48]
+    day_results_df['electrolyser_kW_5'] = electrolyser_kW_level_5.values[0:48]
+    day_results_df['h2_produced_kWh'] = h2_produced_kWh_result[0:48]
+    day_results_df['h2_to_storage_kWh'] = h2_to_storage[0:48]
     day_results_df['h2_in_storage_kWh'] = h2_in_storage[0:48]
     day_results_df['h2_cost'] = cost_array[0:48]
+    day_results_df['h2_cost_corrected'] = corrected_cost_array[0:48]
 
-    return(day_results_df)
+    return(day_results_df, solver_time)
 
 def NoStorageDay(date_array, price_array, h2_price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh):
 
