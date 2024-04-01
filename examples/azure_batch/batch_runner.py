@@ -5,6 +5,7 @@ from itertools import product
 
 from batch_submission.blob import upload_file_to_container
 from batch_submission.batch_submission import BatchSubmission
+from batch_submission.monitor import Monitor
 
 
 class HoptimiserBatchRunner:
@@ -104,7 +105,6 @@ class HoptimiserBatchRunner:
                 json.dump(remaining_tasks, fname, indent=2)
 
         self._cleanup()
-        # ToDo: Add Node Monitor
 
 
 if __name__ == '__main__':
@@ -114,3 +114,11 @@ if __name__ == '__main__':
         ez_power_kw_inputs=[1000, 1250],
     )
     batch_runner.run()
+
+    monitor = Monitor(
+        batch_job=batch_runner.batch_job,
+    )
+    monitor.run(
+        print_output=True,
+        sleep_time_s=600,
+    )

@@ -14,7 +14,7 @@
 
 ### Running with Azure Batch
 
-- Copy the `batch_submission` package from [Azure Batch](https://github.com/resgroup/AzureBatch) into the project root, using `v0.7.2` or higher.
+- Copy the `batch_submission` package from [Azure Batch](https://github.com/resgroup/AzureBatch) into the project root, using `v0.8.0` or higher.
 - Configure the following `ENVIRONMENT` variables within the `.env` file in the 
 project root:
 ```python
