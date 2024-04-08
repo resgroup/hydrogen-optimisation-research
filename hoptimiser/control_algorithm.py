@@ -30,7 +30,7 @@ class MultiDimensionalLpVariable:
         f = np.vectorize(lambda i: pulp.value(i))
         self.values = f(self.variables)
 
-def LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank):
+def LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment):
 
     cost = 0
 
@@ -46,19 +46,27 @@ def LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, d
     electrolyser_turned_on_level_4 = MultiDimensionalLpVariable('electrolyser_turned_on_4', len(data_day), 0, 1, cat = "Binary")
     electrolyser_turned_on_level_5 = MultiDimensionalLpVariable('electrolyser_turned_on_5', len(data_day), 0, 1, cat = "Binary")
 
+    adjusted_efficiency_1 = electrolyser.efficiency_simplified[0] * efficiency_adjustment
+    adjusted_efficiency_2 = electrolyser.efficiency_simplified[1] * efficiency_adjustment
+    adjusted_efficiency_3 = electrolyser.efficiency_simplified[2] * efficiency_adjustment
+    adjusted_efficiency_4 = electrolyser.efficiency_simplified[3] * efficiency_adjustment
+    adjusted_efficiency_5 = electrolyser.efficiency_simplified[4] * efficiency_adjustment
+
+    adjusted_full_efficiency_curve = [e * efficiency_adjustment for e in electrolyser.efficiency]
+
     h2_in_storage_kwh = day_start_h2_in_storage_kwh
 
     problem = LpProblem("Minimize_energy_cost_while_meeting_demand", LpMinimize)
 
     for i in range(0, len(price_array)):
         electrolyser_kW = electrolyser_kW_level_1[i] + electrolyser_kW_level_2[i] + electrolyser_kW_level_3[i] + electrolyser_kW_level_4[i] + electrolyser_kW_level_5[i]
-        cost += (electrolyser_kW / line_losses_after_poi) * price_array[i] * 0.5
+        cost += (electrolyser_kW / line_losses_after_poi) * price_array[i] * 0.5 / 1000.
 
     problem += cost
 
     for i in range(0, len(price_array)):
 
-        h2_produced_kWh = 0.5 * ((electrolyser_kW_level_1[i] * electrolyser.efficiency_simplified[0]) + (electrolyser_kW_level_2[i] * electrolyser.efficiency_simplified[1]) + (electrolyser_kW_level_3[i] * electrolyser.efficiency_simplified[2]) + (electrolyser_kW_level_4[i] * electrolyser.efficiency_simplified[3]) + (electrolyser_kW_level_5[i] * electrolyser.efficiency_simplified[4]))
+        h2_produced_kWh = 0.5 * ((electrolyser_kW_level_1[i] * adjusted_efficiency_1) + (electrolyser_kW_level_2[i] * adjusted_efficiency_2) + (electrolyser_kW_level_3[i] * adjusted_efficiency_3) + (electrolyser_kW_level_4[i] * adjusted_efficiency_4) + (electrolyser_kW_level_5[i] * adjusted_efficiency_5))
 
         h2_storage_space_available_kwh = tank.max_storage_kwh - h2_in_storage_kwh
 
@@ -123,11 +131,11 @@ def LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, d
 
     for i in range(0,48):
 
-        h2_produced_kWh_result[i] = 0.5 * ((electrolyser_kW_level_1.values[i] * electrolyser.efficiency_simplified[0]) + (electrolyser_kW_level_2.values[i] * electrolyser.efficiency_simplified[1]) + (electrolyser_kW_level_3.values[i] * electrolyser.efficiency_simplified[2]) + (electrolyser_kW_level_4.values[i] * electrolyser.efficiency_simplified[3]) + (electrolyser_kW_level_5.values[i] * electrolyser.efficiency_simplified[4]))
+        h2_produced_kWh_result[i] = 0.5 * ((electrolyser_kW_level_1.values[i] * adjusted_efficiency_1) + (electrolyser_kW_level_2.values[i] * adjusted_efficiency_2) + (electrolyser_kW_level_3.values[i] * adjusted_efficiency_3) + (electrolyser_kW_level_4.values[i] * adjusted_efficiency_4) + (electrolyser_kW_level_5.values[i] * adjusted_efficiency_5))
         h2_to_storage[i] = h2_produced_kWh_result[i] - demand_array[i]
-        real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.max_power, electrolyser.efficiency_load_factor, electrolyser.efficiency)
-        cost_array[i] = (electrolyser_kW_result[i] / line_losses_after_poi) * price_array[i] * 0.5
-        corrected_cost_array[i] = (h2_produced_kWh_result[i] * price_array[i]) / (real_efficiency * line_losses_after_poi)
+        real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.max_power, electrolyser.efficiency_load_factor, adjusted_full_efficiency_curve)
+        cost_array[i] = (electrolyser_kW_result[i] / (1000 * line_losses_after_poi)) * price_array[i] * 0.5
+        corrected_cost_array[i] = (h2_produced_kWh_result[i] * price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
         h2_in_storage_tracker = (h2_in_storage_tracker + h2_to_storage[i]) * tank.remaining_fraction_after_half_hour
         h2_in_storage[i] = h2_in_storage_tracker
 
