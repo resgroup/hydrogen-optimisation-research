@@ -11,9 +11,12 @@ from read_time_series_data import read_ts_data
 if __name__ == "__main__":
 
     start_time = datetime.datetime.now()
-    lp_solver_time_limit_seconds = 0.1
+    lp_solver_time_limit_seconds = 0.5
 
-    grid_import_max_power = 40000
+    #Todo the code assumes that we pay per MWh at the POI, and then counts line losses from there to the electrolyser.
+    # Need to confirm that this is right
+
+    grid_import_max_power = 23000
     power_factor = 0.94
     line_losses_after_poi = 0.95
     h2_heating_value = 'lower'
@@ -51,8 +54,8 @@ if __name__ == "__main__":
 
     combinations = populate_combinations(tank_df, electrolyser_df)
     test_combination = combinations[0]
-    test_combination = [3, 9, 0, 5]
-    stack_replacement_years = []
+    test_combination = [3, 3, 0, 10]
+    stack_replacement_years = [4, 8]
 
     selected_electrolyser = electrolyser_df.loc[test_combination[0], :]
     n_electrolysers = test_combination[1]
@@ -85,22 +88,34 @@ if __name__ == "__main__":
         data['demand'] = data[demand_year]
         data['price'] = data[price_year]
 
-        p75_demand = np.percentile(data.demand, 75)
+        electrolyser.max_power = min(grid_import_max_power * line_losses_after_poi, electrolyser.max_power)
+
+        p80_demand = np.percentile(data.demand, 80)
         max_h2_production = electrolyser.max_power * electrolyser.efficiency[-1] * 0.5 * efficiency_adjustment
 
         print('Demand Year: ', demand_year)
         print('Price Year: ', price_year)
         print('Efficiency Adjustment based on worst year: ', efficiency_adjustment)
 
-        if max_h2_production < p75_demand:
-            raise Exception('Production capacity unlikely to be able to meet demand!')
+        #calculate the max culmulative undersupply of h2 over any rolling time period:
+        data['under_supply'] = data['demand'] - max_h2_production
+        max_cumulative_undersupply = 0
+        for i in range(1, 48 * 10):
+            test = max(data['under_supply'].rolling(i).sum().shift(-(i - 1)))
+            max_cumulative_undersupply = max(test, max_cumulative_undersupply)
+
+        if tank.min_storage_kwh < max_cumulative_undersupply:
+            print('Minimum storage remaining set to cover worst day of over-demand: ', round(max_cumulative_undersupply, 1), ' kWh')
+            tank.min_storage_kwh = max_cumulative_undersupply
+            tank.starting_storage_kwh = max(tank.starting_storage_kwh, tank.min_storage_kwh)
+
+            if tank.min_storage_kwh >= tank.max_storage_kwh:
+                raise Exception('Tank not large enough to cover worst day of overdemand!')
 
         print('Electrolysers Max Power = ', electrolyser.max_power)
         print('Maximum storage kWh = ', tank.max_storage_kwh)
 
         #todo lookup floor area of electrolysers and tanks and ensure it doesn't exceed the max floor area
-
-        electrolyser.max_power = min(grid_import_max_power * line_losses_after_poi, electrolyser.max_power)
 
         total_cost = 0
         day_start_h2_in_storage_kwh = tank.starting_storage_kwh
@@ -110,6 +125,8 @@ if __name__ == "__main__":
         i = 0
         days_with_solver_time_curtailed = 0
         day_start_storage_remaining = pd.DataFrame(columns=['remaining'])
+
+        min_storage_restriction_fraction = 1.
 
         for day in data['Day'].unique()[0:len(data['Day'].unique())-1]:
 
@@ -129,7 +146,7 @@ if __name__ == "__main__":
             price_array = data_day.price
             demand_array = data_day.demand
 
-            day_results_df, solver_time = LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment)
+            day_results_df, solver_time, min_storage_restriction_fraction = LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, min_storage_restriction_fraction)
 
             #day_results_df = BasicControlDay(date_array, price_array, h2_price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, min_h2_production_kwh, max_h2_production_kwh, max_h2_to_storage_kwh, max_storage_kwh, min_storage_kwh)
 
@@ -150,6 +167,9 @@ if __name__ == "__main__":
 
             if solver_time >= datetime.timedelta(seconds = lp_solver_time_limit_seconds) * 0.999:
                 days_with_solver_time_curtailed += 1
+
+            if min_storage_restriction_fraction < 1:
+                min_storage_restriction_fraction = min(1, min_storage_restriction_fraction + 0.2)
 
         print('Days curtailed due to solver time limit = ',days_with_solver_time_curtailed)
 
