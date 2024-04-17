@@ -30,15 +30,16 @@ class MultiDimensionalLpVariable:
         f = np.vectorize(lambda i: pulp.value(i))
         self.values = f(self.variables)
 
-def LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, min_storage_restriction_fraction):
+def LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag):
 
-    day_success = False
+    day_complete = False
+    failure_counter = 0
+    day_start_h2_in_storage_kwh = min(day_start_h2_in_storage_kwh, tank.max_storage_kwh)
+    end_of_day_storage_target = min(end_of_day_storage_target, tank.min_storage_kwh)
+    total_min_storage_remaining = min(end_of_day_storage_target, day_start_h2_in_storage_kwh) - 1E-6
+    in_day_min_storage_remaining = total_min_storage_remaining
 
-    while not day_success:
-
-        print(date_array[0], min_storage_restriction_fraction)
-
-        min_storage_remaining_allowed = tank.min_storage_kwh * min_storage_restriction_fraction
+    while not day_complete:
 
         cost = 0
 
@@ -84,7 +85,13 @@ def LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, d
 
             h2_in_storage_kwh = (h2_in_storage_kwh + h2_to_storage) * tank.remaining_fraction_after_half_hour
 
-            problem += storage_remaining >= min_storage_remaining_allowed
+            if i == 47:
+                problem += storage_remaining >= end_of_day_storage_target
+            elif i < 47:
+                problem += storage_remaining >= in_day_min_storage_remaining
+            else:
+                problem += storage_remaining >= total_min_storage_remaining
+
             problem += storage_overfill <= 0
 
             problem += electrolyser_kW_level_1[i] <= electrolyser_turned_on_level_1[i] * electrolyser.efficiency_load_factor_simplified[0] * electrolyser.max_power
@@ -109,71 +116,83 @@ def LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, d
         problem.solve(PULP_CBC_CMD(msg=False, keepFiles=False, timeLimit=lp_solver_time_limit_seconds))
 
         if problem.status == 1:
-            day_success = True
+            day_complete = True
         else:
-        #    raise Exception('Problem is infeasible for at least one time period')
-            print('Infeasible day:', data_day['Day'][0], 'rerunning after releasing some storage capacity...')
-            min_storage_restriction_fraction = max(0, min_storage_restriction_fraction - 0.1)
+            failure_counter += 1
 
-            #todo if a day fails calculate the undersupply for the day and release exactly that amount of extra storage
+            if failure_counter == 1:
 
+                h2_stored_check = day_start_h2_in_storage_kwh
+                min_h2_stored_check = h2_stored_check
+                for i in range(0, len(demand_array)):
+                    h2_to_storage_check = max_h2_production - demand_array[i]
+                    h2_stored_check += h2_to_storage_check
+                    h2_stored_check = h2_stored_check * tank.remaining_fraction_after_half_hour
+                    h2_stored_check = min(tank.max_storage_kwh, h2_stored_check)
+                    min_h2_stored_check = min(h2_stored_check, min_h2_stored_check)
+                    if i == 47:
+                        min_h2_stored_check_in_day = max(0, min_h2_stored_check)
+
+                total_min_storage_remaining = min_h2_stored_check - 1E-6
+                in_day_min_storage_remaining = min_h2_stored_check_in_day - 1E-6
+                end_of_day_storage_target = in_day_min_storage_remaining
+                end_of_day_storage_increase_per_day = (tank.min_storage_kwh - end_of_day_storage_target) * 0.5
+
+                print('Infeasible day:', data_day['Day'][0],', rerunning after reducing min remaining storage to ', round(in_day_min_storage_remaining, 0))
+                print(in_day_min_storage_remaining, total_min_storage_remaining)
+            else:
+                day_complete = True
+                failed_combination_flag = True
+                print('Control failed to solve for at least one day with this input combination!')
 
     end_solver_time = datetime.datetime.now()
 
     solver_time = end_solver_time - start_solver_time
 
-    electrolyser_kW_level_1.evaluate()
-    electrolyser_kW_level_2.evaluate()
-    electrolyser_kW_level_3.evaluate()
-    electrolyser_kW_level_4.evaluate()
-    electrolyser_kW_level_5.evaluate()
+    if not failed_combination_flag:
 
-    electrolyser_kW_result = electrolyser_kW_level_1.values + electrolyser_kW_level_2.values + electrolyser_kW_level_3.values + electrolyser_kW_level_4.values + electrolyser_kW_level_5.values
+        electrolyser_kW_level_1.evaluate()
+        electrolyser_kW_level_2.evaluate()
+        electrolyser_kW_level_3.evaluate()
+        electrolyser_kW_level_4.evaluate()
+        electrolyser_kW_level_5.evaluate()
 
-    h2_in_storage_tracker = day_start_h2_in_storage_kwh
-    h2_in_storage = np.zeros(48)
-    h2_to_storage = np.zeros(48)
-    cost_array = np.zeros(48)
-    corrected_cost_array = np.zeros(48)
+        electrolyser_kW_result = electrolyser_kW_level_1.values + electrolyser_kW_level_2.values + electrolyser_kW_level_3.values + electrolyser_kW_level_4.values + electrolyser_kW_level_5.values
 
-    h2_produced_kWh_result = price_array.copy()
+        h2_in_storage_tracker = day_start_h2_in_storage_kwh
+        h2_in_storage = np.zeros(48)
+        h2_to_storage = np.zeros(48)
+        cost_array = np.zeros(48)
+        corrected_cost_array = np.zeros(48)
 
-    for i in range(0,48):
+        h2_produced_kWh_result = price_array.copy()
 
-        h2_produced_kWh_result[i] = 0.5 * ((electrolyser_kW_level_1.values[i] * adjusted_efficiency_1) + (electrolyser_kW_level_2.values[i] * adjusted_efficiency_2) + (electrolyser_kW_level_3.values[i] * adjusted_efficiency_3) + (electrolyser_kW_level_4.values[i] * adjusted_efficiency_4) + (electrolyser_kW_level_5.values[i] * adjusted_efficiency_5))
-        h2_to_storage[i] = h2_produced_kWh_result[i] - demand_array[i]
-        real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.max_power, electrolyser.efficiency_load_factor, adjusted_full_efficiency_curve)
-        cost_array[i] = (electrolyser_kW_result[i] / (1000 * line_losses_after_poi)) * price_array[i] * 0.5
-        corrected_cost_array[i] = (h2_produced_kWh_result[i] * price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
-        h2_in_storage_tracker = (h2_in_storage_tracker + h2_to_storage[i]) * tank.remaining_fraction_after_half_hour
-        h2_in_storage[i] = h2_in_storage_tracker
+        for i in range(0,48):
 
-    #todo if day fails to solve, allow full storage capacity to be used and try again
-    # if it then works (which it should), we must increase min storage capacity again gradually over the following days
-    # ready for the next high overdemand day
+            h2_produced_kWh_result[i] = 0.5 * ((electrolyser_kW_level_1.values[i] * adjusted_efficiency_1) + (electrolyser_kW_level_2.values[i] * adjusted_efficiency_2) + (electrolyser_kW_level_3.values[i] * adjusted_efficiency_3) + (electrolyser_kW_level_4.values[i] * adjusted_efficiency_4) + (electrolyser_kW_level_5.values[i] * adjusted_efficiency_5))
+            h2_to_storage[i] = h2_produced_kWh_result[i] - demand_array[i]
+            real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.max_power, electrolyser.efficiency_load_factor, adjusted_full_efficiency_curve)
+            cost_array[i] = (electrolyser_kW_result[i] / (1000 * line_losses_after_poi)) * price_array[i] * 0.5
+            corrected_cost_array[i] = (h2_produced_kWh_result[i] * price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
+            h2_in_storage_tracker = (h2_in_storage_tracker + h2_to_storage[i]) * tank.remaining_fraction_after_half_hour
+            h2_in_storage[i] = h2_in_storage_tracker
 
-    #if any(h < 0 for h in h2_in_storage):
-        #raise Exception('Negative storage found - control unsolveable!')
-    #if any(ep > electrolyser.max_power for ep in electrolyser_kW_result):
-        #raise Exception('Electrolyser exceeds maximum power - control unsolveable!')
+        day_results_df['datetime'] = date_array[0:48]
+        day_results_df['price'] = price_array[0:48]
+        day_results_df['h2_demand_kWh'] = demand_array[0:48]
+        day_results_df['electrolyser_kW'] = electrolyser_kW_result[0:48]
+        day_results_df['electrolyser_kW_1'] = electrolyser_kW_level_1.values[0:48]
+        day_results_df['electrolyser_kW_2'] = electrolyser_kW_level_2.values[0:48]
+        day_results_df['electrolyser_kW_3'] = electrolyser_kW_level_3.values[0:48]
+        day_results_df['electrolyser_kW_4'] = electrolyser_kW_level_4.values[0:48]
+        day_results_df['electrolyser_kW_5'] = electrolyser_kW_level_5.values[0:48]
+        day_results_df['h2_produced_kWh'] = h2_produced_kWh_result[0:48]
+        day_results_df['h2_to_storage_kWh'] = h2_to_storage[0:48]
+        day_results_df['h2_in_storage_kWh'] = h2_in_storage[0:48]
+        day_results_df['h2_cost'] = cost_array[0:48]
+        day_results_df['h2_cost_corrected'] = corrected_cost_array[0:48]
 
-
-    day_results_df['datetime'] = date_array[0:48]
-    day_results_df['price'] = price_array[0:48]
-    day_results_df['h2_demand_kWh'] = demand_array[0:48]
-    day_results_df['electrolyser_kW'] = electrolyser_kW_result[0:48]
-    day_results_df['electrolyser_kW_1'] = electrolyser_kW_level_1.values[0:48]
-    day_results_df['electrolyser_kW_2'] = electrolyser_kW_level_2.values[0:48]
-    day_results_df['electrolyser_kW_3'] = electrolyser_kW_level_3.values[0:48]
-    day_results_df['electrolyser_kW_4'] = electrolyser_kW_level_4.values[0:48]
-    day_results_df['electrolyser_kW_5'] = electrolyser_kW_level_5.values[0:48]
-    day_results_df['h2_produced_kWh'] = h2_produced_kWh_result[0:48]
-    day_results_df['h2_to_storage_kWh'] = h2_to_storage[0:48]
-    day_results_df['h2_in_storage_kWh'] = h2_in_storage[0:48]
-    day_results_df['h2_cost'] = cost_array[0:48]
-    day_results_df['h2_cost_corrected'] = corrected_cost_array[0:48]
-
-    return(day_results_df, solver_time, min_storage_restriction_fraction)
+    return(day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag)
 
 def NoStorageDay(date_array, price_array, h2_price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh):
 

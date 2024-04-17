@@ -8,12 +8,14 @@ from component_inputs_reader import read_component_data, populate_combinations
 from component_classes import CombinedElectrolyser, CombinedTank
 from read_time_series_data import read_ts_data
 
-if __name__ == "__main__":
+def variable_price_runner(tank_df, electrolyser_df, data_years, input_combination):
+
+    print('Running using combination: ', input_combination)
 
     start_time = datetime.datetime.now()
     lp_solver_time_limit_seconds = 0.5
 
-    #Todo the code assumes that we pay per MWh at the POI, and then counts line losses from there to the electrolyser.
+    #Todo: the code assumes that we pay per MWh at the POI, and then counts line losses from there to the electrolyser.
     # Need to confirm that this is right
 
     grid_import_max_power = 23000
@@ -36,7 +38,6 @@ if __name__ == "__main__":
 
     input_demand_profiles = r'C:\Users\tyoung\Documents\GitHub\hydrogen-optimisation-research\examples\demand_profiles.xlsx'
     input_price_profiles = r'C:\Users\tyoung\Documents\GitHub\hydrogen-optimisation-research\examples\price_profiles.xlsx'
-    input_file_name_components = r'C:\Users\tyoung\Documents\GitHub\hydrogen-optimisation-research\examples\component_inputs.xlsx'
 
     if h2_heating_value == 'lower':
         kwh_per_kg = 33.3
@@ -44,23 +45,17 @@ if __name__ == "__main__":
         kwh_per_kg = 39.3
 
     data = read_ts_data(input_demand_profiles, input_price_profiles)
-    tank_df, electrolyser_df, data_years = read_component_data(input_file_name_components)
+
+    #data = data[0:48*10]
 
     first_operational_year = data_years.loc[0,'CalendarYear']
     n_years = len(data_years)
 
-    unique_years = data_years.groupby('combined').first()
-    unique_years = unique_years.reset_index()
-
-    combinations = populate_combinations(tank_df, electrolyser_df)
-    test_combination = combinations[0]
-    test_combination = [3, 3, 0, 10]
-    stack_replacement_years = [4, 8]
-
-    selected_electrolyser = electrolyser_df.loc[test_combination[0], :]
-    n_electrolysers = test_combination[1]
-    selected_tank = tank_df.loc[test_combination[2], :]
-    n_tanks = test_combination[3]
+    selected_electrolyser = electrolyser_df.loc[input_combination[0], :]
+    n_electrolysers = input_combination[1]
+    selected_tank = tank_df.loc[input_combination[2], :]
+    n_tanks = input_combination[3]
+    stack_replacement_years = input_combination[4:]
 
     electrolyser = CombinedElectrolyser(selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, n_years, electrolyser_min_capacity = 0.1)
     tank = CombinedTank(selected_tank, n_tanks)
@@ -68,23 +63,20 @@ if __name__ == "__main__":
     electrolyser.combined_stack_and_efficiencies_df = electrolyser.combined_stack_and_efficiencies_df.merge(data_years)
 
     unique_years = electrolyser.combined_stack_and_efficiencies_df.groupby('combined').min().reset_index()[['combined','PriceYear','DemandYear','final_relative_efficiency']]
-
     unique_years = unique_years.rename(columns = {'final_relative_efficiency': 'minimum_relative_efficiency'})
 
     results_years = electrolyser.combined_stack_and_efficiencies_df.copy()
-
     results_years = results_years.drop(['PriceYear', 'DemandYear'], axis = 1)
-
     results_years = results_years.merge(unique_years, on = 'combined')
-
     results_years['cost_reduction_factor'] = results_years['minimum_relative_efficiency'] / results_years['final_relative_efficiency']
+
+    failed_combination_flag = False
 
     for analysis_year in range(0, len(unique_years)):
 
         price_year = unique_years.loc[analysis_year, 'PriceYear']
         demand_year = unique_years.loc[analysis_year, 'DemandYear']
         efficiency_adjustment = unique_years.loc[analysis_year, 'minimum_relative_efficiency']
-
         data['demand'] = data[demand_year]
         data['price'] = data[price_year]
 
@@ -93,128 +85,155 @@ if __name__ == "__main__":
         p80_demand = np.percentile(data.demand, 80)
         max_h2_production = electrolyser.max_power * electrolyser.efficiency[-1] * 0.5 * efficiency_adjustment
 
-        print('Demand Year: ', demand_year)
-        print('Price Year: ', price_year)
-        print('Efficiency Adjustment based on worst year: ', efficiency_adjustment)
+        if (p80_demand < max_h2_production) and not (failed_combination_flag):
 
-        #calculate the max culmulative undersupply of h2 over any rolling time period:
-        data['under_supply'] = data['demand'] - max_h2_production
-        max_cumulative_undersupply = 0
-        for i in range(1, 48 * 10):
-            test = max(data['under_supply'].rolling(i).sum().shift(-(i - 1)))
-            max_cumulative_undersupply = max(test, max_cumulative_undersupply)
+            print('Demand Year: ', demand_year)
+            print('Price Year: ', price_year)
+            print('Efficiency Adjustment based on worst year: ', efficiency_adjustment)
 
-        if tank.min_storage_kwh < max_cumulative_undersupply:
-            print('Minimum storage remaining set to cover worst day of over-demand: ', round(max_cumulative_undersupply, 1), ' kWh')
-            tank.min_storage_kwh = max_cumulative_undersupply
-            tank.starting_storage_kwh = max(tank.starting_storage_kwh, tank.min_storage_kwh)
+            #calculate the max culmulative undersupply of h2 over any rolling time period:
+            data['under_supply'] = data['demand'] - max_h2_production
+            max_cumulative_undersupply = 0
+            for i in range(1, 48 * 10):
+                #i = 48
+                test = max(data['under_supply'].rolling(i).sum().shift(-(i - 1)))
+                max_cumulative_undersupply = max(test, max_cumulative_undersupply)
+                #if test >  0:
+                #    print(i, test)
+            if tank.min_storage_kwh < max_cumulative_undersupply:
+                print('Minimum storage remaining set to cover worst day of over-demand: ', round(max_cumulative_undersupply, 1), ' kWh')
+                tank.min_storage_kwh = max_cumulative_undersupply
+                tank.starting_storage_kwh = max(tank.starting_storage_kwh, tank.min_storage_kwh)
 
-            if tank.min_storage_kwh >= tank.max_storage_kwh:
-                raise Exception('Tank not large enough to cover worst day of overdemand!')
+                if tank.min_storage_kwh >= tank.max_storage_kwh:
+                    failed_combination_flag = True
+                    print('Tank not large enough to cover largest period of overdemand!')
 
-        print('Electrolysers Max Power = ', electrolyser.max_power)
-        print('Maximum storage kWh = ', tank.max_storage_kwh)
+            print('Electrolysers Max Power = ', round(electrolyser.max_power, 0))
+            print('Max h2 production = ', round(max_h2_production, 0))
+            print('Max demand = ', round(max(data['demand']), 0))
+            print('P99 demand = ', round(np.percentile(data.demand, 99), 0))
+            print('P95 demand = ', round(np.percentile(data.demand, 95), 0))
+            print('Maximum storage kWh = ', round(tank.max_storage_kwh, 0))
 
-        #todo lookup floor area of electrolysers and tanks and ensure it doesn't exceed the max floor area
+            #todo lookup floor area of electrolysers and tanks and ensure it doesn't exceed the max floor area
 
-        total_cost = 0
-        day_start_h2_in_storage_kwh = tank.starting_storage_kwh
+            total_cost = 0
+            day_start_h2_in_storage_kwh = tank.starting_storage_kwh
 
-        results_df = pd.DataFrame(columns=['datetime','price','h2_demand_kWh','h2_produced_kWh','h2_to_storage_kWh','h2_in_storage_kWh'])
+            results_df = pd.DataFrame(columns=['datetime','price','h2_demand_kWh','h2_produced_kWh','h2_to_storage_kWh','h2_in_storage_kWh'])
 
-        i = 0
-        days_with_solver_time_curtailed = 0
-        day_start_storage_remaining = pd.DataFrame(columns=['remaining'])
+            i = 0
+            days_with_solver_time_curtailed = 0
+            day_start_storage_remaining = pd.DataFrame(columns=['remaining'])
 
-        min_storage_restriction_fraction = 1.
+            end_of_day_storage_target = tank.min_storage_kwh
+            end_of_day_storage_increase_per_day = 0
 
-        for day in data['Day'].unique()[0:len(data['Day'].unique())-1]:
+            for day in data['Day'].unique()[0:len(data['Day'].unique())-1]:
 
-            day_start_time = datetime.datetime.now()
+                if not failed_combination_flag:
 
-            day_results_df = pd.DataFrame(columns=['datetime','price','h2_demand_kWh','h2_produced_kWh','h2_to_storage_kWh','h2_in_storage_kWh'])
+                    day_start_time = datetime.datetime.now()
 
-            data_day = data.loc[(data['Day'] == day), :]
+                    day_results_df = pd.DataFrame(columns=['datetime','price','h2_demand_kWh','h2_produced_kWh','h2_to_storage_kWh','h2_in_storage_kWh'])
 
-            #Guess that first 12 hours of following day will have the same price and demand as this day:
+                    data_day = data.loc[(data['Day'] == day), :]
 
-            data_day = data_day.reset_index()
-            data_day = pd.concat([data_day, data_day.loc[0:23, :]])
-            data_day = data_day.reset_index()
+                    #Guess that first 12 hours of following day will have the same price and demand as this day:
 
-            date_array = data_day.Time
-            price_array = data_day.price
-            demand_array = data_day.demand
+                    data_day = data_day.reset_index()
+                    data_day = pd.concat([data_day, data_day.loc[0:23, :]])
+                    data_day = data_day.reset_index()
 
-            day_results_df, solver_time, min_storage_restriction_fraction = LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, min_storage_restriction_fraction)
+                    date_array = data_day.Time
+                    price_array = data_day.price
+                    demand_array = data_day.demand
 
-            #day_results_df = BasicControlDay(date_array, price_array, h2_price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, min_h2_production_kwh, max_h2_production_kwh, max_h2_to_storage_kwh, max_storage_kwh, min_storage_kwh)
+                    day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
 
-            #day_results_df = NoStorageDay(date_array, price_array, h2_price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh)
+                if not failed_combination_flag:
 
-            day_start_h2_in_storage_kwh = day_results_df['h2_in_storage_kWh'][47]
+                    day_start_h2_in_storage_kwh = day_results_df['h2_in_storage_kWh'][47]
 
-            day_start_storage_remaining.loc[i, 'date'] = day_results_df['datetime'][47]
-            day_start_storage_remaining.loc[i,'remaining'] = day_start_h2_in_storage_kwh
-            i += 1
-            total_cost += day_results_df['h2_cost_corrected'].sum()
+                    day_start_storage_remaining.loc[i, 'date'] = day_results_df['datetime'][47]
+                    day_start_storage_remaining.loc[i,'remaining'] = day_start_h2_in_storage_kwh
+                    i += 1
+                    total_cost += day_results_df['h2_cost_corrected'].sum()
 
-            results_df = pd.concat([results_df, day_results_df])
+                    results_df = pd.concat([results_df, day_results_df])
 
-            day_end_time = datetime.datetime.now()
+                    day_end_time = datetime.datetime.now()
 
-            day_time_taken = day_end_time - day_start_time
+                    day_time_taken = day_end_time - day_start_time
 
-            if solver_time >= datetime.timedelta(seconds = lp_solver_time_limit_seconds) * 0.999:
-                days_with_solver_time_curtailed += 1
+                    if solver_time >= datetime.timedelta(seconds = lp_solver_time_limit_seconds) * 0.999:
+                        days_with_solver_time_curtailed += 1
 
-            if min_storage_restriction_fraction < 1:
-                min_storage_restriction_fraction = min(1, min_storage_restriction_fraction + 0.2)
+                    if end_of_day_storage_target < tank.min_storage_kwh:
+                        end_of_day_storage_target += end_of_day_storage_increase_per_day
 
-        print('Days curtailed due to solver time limit = ',days_with_solver_time_curtailed)
 
-        print(total_cost/1E6)
+            if not failed_combination_flag:
 
-        results_df.to_csv('results_'+str(analysis_year)+'.csv')
+                print('Days curtailed due to solver time limit = ',days_with_solver_time_curtailed)
 
-        day_start_storage_remaining.to_csv('daystart.csv')
-        end_time = datetime.datetime.now()
+                results_df.to_csv('results/results_'+str(analysis_year)+'_'+str(input_combination)+'.csv')
 
-        time_taken = end_time - start_time
+                'results/overall_results' + str(input_combination) + '.csv'
 
-        print('Total time taken = ', time_taken)
+                day_start_storage_remaining.to_csv('daystart.csv')
+                end_time = datetime.datetime.now()
 
-        combined_lookup = unique_years['combined'][analysis_year]
+                time_taken = end_time - start_time
 
-        results_years.loc[results_years['combined'] == combined_lookup, 'electricity_cost'] = round(total_cost, 2) * results_years.loc[results_years['combined'] == combined_lookup, 'cost_reduction_factor']
-        results_years.loc[results_years['combined'] == combined_lookup, 'h2_to_demand_kWh'] = round(data.demand.sum(),2)
-        results_years.loc[results_years['combined'] == combined_lookup, 'h2_to_demand_kg'] = round(data.demand.sum(),2) / kwh_per_kg
-        results_years.loc[results_years['combined'] == combined_lookup, 'water_cost'] = round(data.demand.sum(),2) * water_price_per_litre * water_needed_per_mwh_h2 / 1000
+                print('Total time taken = ', time_taken)
 
-    results_years['discount_factor'] = 1 / ((1 + discount_rate_percent / 100) ** (results_years['OperationalYear'] - 1))
-    results_years['electrolyser_capex'] = 0
-    results_years['tank_capex'] = 0
-    results_years['stack_capex'] = electrolyser.combined_stack_and_efficiencies_df['stack_replacement'] * electrolyser.combined_stack_and_efficiencies_df['stack_final_capex']
-    results_years['electrolyser_opex_yr'] = electrolyser.opex_per_year
-    results_years['tank_opex_yr'] = tank.opex_per_year
-    results_years.loc[0,'electrolyser_capex'] = electrolyser.capex
-    results_years.loc[0, 'tank_capex'] = tank.capex
-    results_years['other_energy_costs'] = annual_additonal_costs + annual_admin_costs
-    #todo calculate other energy costs e.g. using sleeving fee etc.
+                combined_lookup = unique_years['combined'][analysis_year]
 
-    levilised_cost = np.dot(results_years['electricity_cost'], results_years['discount_factor'])
-    levilised_cost += np.dot(results_years['other_energy_costs'], results_years['discount_factor'])
-    levilised_cost += np.dot(results_years['electrolyser_capex'], results_years['discount_factor'])
-    levilised_cost += np.dot(results_years['electrolyser_opex_yr'], results_years['discount_factor'])
-    levilised_cost += np.dot(results_years['stack_capex'], results_years['discount_factor'])
-    levilised_cost += np.dot(results_years['tank_capex'], results_years['discount_factor'])
-    levilised_cost += np.dot(results_years['tank_opex_yr'], results_years['discount_factor'])
-    levilised_cost += np.dot(results_years['water_cost'], results_years['discount_factor'])
+                results_years.loc[results_years['combined'] == combined_lookup, 'electricity_cost'] = round(total_cost, 2) * results_years.loc[results_years['combined'] == combined_lookup, 'cost_reduction_factor']
+                results_years.loc[results_years['combined'] == combined_lookup, 'h2_to_demand_kWh'] = round(data.demand.sum(),2)
+                results_years.loc[results_years['combined'] == combined_lookup, 'h2_to_demand_kg'] = round(data.demand.sum(),2) / kwh_per_kg
+                results_years.loc[results_years['combined'] == combined_lookup, 'water_cost'] = round(data.demand.sum(),2) * water_price_per_litre * water_needed_per_mwh_h2 / 1000
 
-    levilised_production = np.dot(results_years['h2_to_demand_kg'], results_years['discount_factor'])
+            else:
+                print('Combination failed to Solve')
 
-    lcoh2 = levilised_cost / levilised_production
+        else:
+            print('Max production insufficient to meet the P80 demand level!')
+            failed_combination_flag = True
 
-    print('lcoh2 = ', lcoh2)
+    if not failed_combination_flag:
 
-    results_years.to_csv('overall_results.csv')
+        results_years['discount_factor'] = 1 / ((1 + discount_rate_percent / 100) ** (results_years['OperationalYear'] - 1))
+        results_years['electrolyser_capex'] = 0
+        results_years['tank_capex'] = 0
+        results_years['stack_capex'] = electrolyser.combined_stack_and_efficiencies_df['stack_replacement'] * electrolyser.combined_stack_and_efficiencies_df['stack_final_capex']
+        results_years['electrolyser_opex_yr'] = electrolyser.opex_per_year
+        results_years['tank_opex_yr'] = tank.opex_per_year
+        results_years.loc[0,'electrolyser_capex'] = electrolyser.capex
+        results_years.loc[0, 'tank_capex'] = tank.capex
+        results_years['other_energy_costs'] = annual_additonal_costs + annual_admin_costs
+        #todo calculate other energy costs e.g. using sleeving fee etc.
+
+        levilised_cost = np.dot(results_years['electricity_cost'], results_years['discount_factor'])
+        levilised_cost += np.dot(results_years['other_energy_costs'], results_years['discount_factor'])
+        levilised_cost += np.dot(results_years['electrolyser_capex'], results_years['discount_factor'])
+        levilised_cost += np.dot(results_years['electrolyser_opex_yr'], results_years['discount_factor'])
+        levilised_cost += np.dot(results_years['stack_capex'], results_years['discount_factor'])
+        levilised_cost += np.dot(results_years['tank_capex'], results_years['discount_factor'])
+        levilised_cost += np.dot(results_years['tank_opex_yr'], results_years['discount_factor'])
+        levilised_cost += np.dot(results_years['water_cost'], results_years['discount_factor'])
+
+        levilised_production = np.dot(results_years['h2_to_demand_kg'], results_years['discount_factor'])
+
+        lcoh2 = levilised_cost / levilised_production
+
+        print('lcoh2 = ', lcoh2)
+
+        results_years.to_csv('results/overall_results'+str(input_combination)+'.csv')
+
+    else:
+        lcoh2 = -99.99
+
+    return lcoh2
