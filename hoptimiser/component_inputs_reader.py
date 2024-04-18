@@ -23,7 +23,6 @@ def read_component_data(input_file_name):
     electrolyser_df['efficiency_learning'] = np.empty((len(electrolyser_df), 0)).tolist()
     electrolyser_df['efficiency_learning_year'] = np.empty((len(electrolyser_df), 0)).tolist()
 
-
     for i in range(0, len(electrolyser_df)):
         electrolyser_df.loc[i, 'electrolyser_efficiency'].append(efficiency_load_factor_df[electrolyser_df.loc[i, 'Efficiency Load Factor Curve']].to_list())
         electrolyser_df.loc[i, 'electrolyser_efficiency_load_factors'].append(efficiency_load_factor_df['Load Factor'].to_list())
@@ -39,15 +38,20 @@ def read_component_data(input_file_name):
 
     return tank_df, electrolyser_df, data_years
 
-def populate_combinations(tank_df, electrolyser_df):
+def populate_combinations(tank_df, electrolyser_df, input_file_name):
 
     combinations = []
+    stack_year_options = pd.read_excel(input_file_name, sheet_name='StackReplacementYears')
 
     for i in range(0, len(electrolyser_df)):
         for n_electrolysers in range(max(1, electrolyser_df.loc[i, 'Minimum Selectable']), electrolyser_df.loc[i, 'Maximum Selectable']+1):
             for j in range(0, len(tank_df)):
                 for n_tanks in range(max(1, tank_df.loc[j, 'Minimum Selectable']), tank_df.loc[j, 'Maximum Selectable'] + 1):
-                    combinations.append([i, n_electrolysers, j, n_tanks])
+                    for s in stack_year_options['ReplacementYearOptions']:
+                        combinations.append([i, n_electrolysers, j, n_tanks])
+                        s = str(s).split(',')
+                        for year in s:
+                            combinations[-1].append(int(year))
 
     return combinations
 

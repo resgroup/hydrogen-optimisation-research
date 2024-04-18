@@ -36,8 +36,8 @@ def variable_price_runner(tank_df, electrolyser_df, data_years, input_combinatio
     annual_additonal_costs = annual_fixed_charge #todo annual_additonal_costs total so far only includes FixedNonComm from results sheet. We need to include ImportNonComm and OffsiteNonComm costs
     annual_admin_costs = annual_additonal_costs * sleeving_fee
 
-    input_demand_profiles = r'C:\Users\tyoung\Documents\GitHub\hydrogen-optimisation-research\examples\demand_profiles.xlsx'
-    input_price_profiles = r'C:\Users\tyoung\Documents\GitHub\hydrogen-optimisation-research\examples\price_profiles.xlsx'
+    input_demand_profiles = r'C:\Users\tyoung\Documents\GitHub\hydrogen-optimisation-research\inputs\demand_profiles.csv'
+    input_price_profiles = r'C:\Users\tyoung\Documents\GitHub\hydrogen-optimisation-research\inputs\price_profiles.csv'
 
     if h2_heating_value == 'lower':
         kwh_per_kg = 33.3
@@ -78,7 +78,7 @@ def variable_price_runner(tank_df, electrolyser_df, data_years, input_combinatio
         demand_year = unique_years.loc[analysis_year, 'DemandYear']
         efficiency_adjustment = unique_years.loc[analysis_year, 'minimum_relative_efficiency']
         data['demand'] = data[demand_year]
-        data['price'] = data[price_year]
+        data['price'] = data[str(price_year)]
 
         electrolyser.max_power = min(grid_import_max_power * line_losses_after_poi, electrolyser.max_power)
 
@@ -178,9 +178,7 @@ def variable_price_runner(tank_df, electrolyser_df, data_years, input_combinatio
 
                 print('Days curtailed due to solver time limit = ',days_with_solver_time_curtailed)
 
-                results_df.to_csv('results/results_'+str(analysis_year)+'_'+str(input_combination)+'.csv')
-
-                'results/overall_results' + str(input_combination) + '.csv'
+                results_df.to_csv('../results/results_'+str(analysis_year)+'_'+str(input_combination)+'.csv')
 
                 day_start_storage_remaining.to_csv('daystart.csv')
                 end_time = datetime.datetime.now()
@@ -231,7 +229,7 @@ def variable_price_runner(tank_df, electrolyser_df, data_years, input_combinatio
 
         print('lcoh2 = ', lcoh2)
 
-        results_years.to_csv('results/overall_results'+str(input_combination)+'.csv')
+        results_years.to_csv('../results/overall_results'+str(input_combination)+'.csv')
 
     else:
         lcoh2 = -99.99
