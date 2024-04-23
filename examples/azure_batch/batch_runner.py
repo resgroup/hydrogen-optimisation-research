@@ -2,6 +2,7 @@ import os
 import json
 import tarfile
 from itertools import product
+import pandas as pd
 
 from batch_submission.blob import upload_file_to_container
 from batch_submission.batch_submission import BatchSubmission
@@ -115,28 +116,67 @@ class HoptimiserBatchRunner:
         #     with open('remaining_tasks.json', 'w', encoding='utf-8') as fname:
         #         json.dump(remaining_tasks, fname, indent=2)
 
-        self._cleanup()
+        #self._cleanup()
 
 
 if __name__ == '__main__':
+
+    analysis_name = 'test-analysis'
+
+    maximum_nodes = 100
 
     input_file_name_components = r'C:\Users\tyoung\Documents\GitHub\hydrogen-optimisation-research\inputs\component_inputs.xlsx'
     tank_df, electrolyser_df, data_years = read_component_data(input_file_name_components)
     combinations = populate_combinations(tank_df, electrolyser_df, input_file_name_components)
 
     batch_runner = HoptimiserBatchRunner(
-        analysis_name='tom-simple-test',
+        analysis_name=analysis_name,
         combinations=combinations
     )
 
+    monitor = Monitor(
+        batch_job=batch_runner.batch_job,
+    )
+    print('Number of combinations = ', len(combinations))
+    #monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
+
     batch_runner.run()
 
+    monitor.run(
+        print_output=True,
+        sleep_time_s=30,
+        analysis_name=analysis_name,
+        combinations=combinations,
+        electrolyser_df=electrolyser_df,
+        tank_df=tank_df
+    )
 
+    results = pd.read_csv('batch_results.csv')
 
-#    monitor = Monitor(
-#        batch_job=batch_runner.batch_job,
-#    )
-#    monitor.run(
-#        print_output=True,
-#        sleep_time_s=300,
-#    )
+    results['electrolyser_id'] = None
+    results['number_of_electrolysers'] = None
+    results['electrolyser_manufacturer'] = None
+    results['electrolyser_capacity'] = None
+    results['tank_id'] = None
+    results['number_of_tanks'] = None
+    results['tank_manufacturer'] = None
+    results['tank_capacity'] = None
+    results['stack_replacement_years'] = None
+
+    for i in range(0, len(results)):
+
+        combination = results.loc[i, 'combination'][1:-1].split(sep = ',')
+
+        results.loc[i, 'electrolyser_id'] = electrolyser_df.loc[int(combination[0]), 'id']
+        results.loc[i, 'electrolyser_manufacturer'] = electrolyser_df.loc[int(combination[0]), 'Manufacturer']
+        results.loc[i, 'tank_id'] = tank_df.loc[int(combination[2]), 'id']
+        results.loc[i, 'tank_manufacturer'] = tank_df.loc[int(combination[2]), 'Manufacturer']
+        results.loc[i, 'number_of_electrolysers'] = int(combination[1])
+        results.loc[i, 'electrolyser_capacity'] = electrolyser_df.loc[int(combination[0]), 'Capacity (MW)']
+        results.loc[i, 'number_of_tanks'] = int(combination[3])
+        results.loc[i, 'tank_capacity'] = tank_df.loc[int(combination[2]), 'H2 MWh Capacity']
+        if len(combination) > 4:
+            results.loc[i, 'stack_replacement_years'] = str(combination[4:])
+
+    results.to_csv('batch_results.csv')
+

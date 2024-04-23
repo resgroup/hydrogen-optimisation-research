@@ -50,8 +50,9 @@ def populate_combinations(tank_df, electrolyser_df, input_file_name):
                     for s in stack_year_options['ReplacementYearOptions']:
                         combinations.append([i, n_electrolysers, j, n_tanks])
                         s = str(s).split(',')
-                        for year in s:
-                            combinations[-1].append(int(year))
+                        if int(s[0]) > -1:
+                            for year in s:
+                                combinations[-1].append(int(year))
 
     return combinations
 
