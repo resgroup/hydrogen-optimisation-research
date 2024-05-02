@@ -2,18 +2,18 @@ import pandas as pd
 
 
 class CombinedElectrolyser():
-    def __init__(self, selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, n_years, electrolyser_min_capacity = 0.1):
+    def __init__(self, selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, n_years, electrolyser_min_capacity = 0.1, optimise_efficiencies = False):
 
         self.max_power = selected_electrolyser['Capacity (MW)'] * 1000 * n_electrolysers
+        self.min_power = max(selected_electrolyser['Capacity (MW)'] * 1000 * electrolyser_min_capacity, 1E-4)
         self.efficiency_load_factor = selected_electrolyser['electrolyser_efficiency_load_factors'][0]
         self.efficiency = selected_electrolyser['electrolyser_efficiency'][0]
-        self.min_power = max(self.max_power * electrolyser_min_capacity * n_electrolysers, 1E-4)
         self.capex = selected_electrolyser['CAPEX'] * n_electrolysers
         self.opex_per_year = selected_electrolyser['OPEX (£/year)'] * n_electrolysers
         self.floor_space = int(selected_electrolyser['Floor Space (m2)'] * n_electrolysers)
         self.start_stack_replacement_cost = selected_electrolyser['Start Stack Replacement Cost'] * n_electrolysers
-        self.efficiency_load_factor_simplified = [0.2, 0.3, 0.6, 0.8, 1.0]
-        self._simplify_efficiencies(self.efficiency_load_factor_simplified)
+        if optimise_efficiencies:
+            self._optimise_efficiencies()
         self.stack_replacement_capex_curve = selected_electrolyser['stack_replacement_capex'][0]
         self.efficiency_degradation = selected_electrolyser['efficiency_degradation'][0]
         self.efficiency_learning_curve = selected_electrolyser['efficiency_learning'][0]
@@ -72,22 +72,11 @@ class CombinedElectrolyser():
 
         return combined_stack_and_efficiencies_df
 
+    def _optimise_efficiencies(self):
 
-    def _simplify_efficiencies(self, load_factor_uppers_simplified):
-
-        self.efficiency_simplified = []
-
-        for i in range(0,len(load_factor_uppers_simplified)):
-
-            upper_index = [j for j, x in enumerate(self.efficiency_load_factor) if x == load_factor_uppers_simplified[i]][0]
-            if i > 0:
-                lower_index = [j for j, x in enumerate(self.efficiency_load_factor) if x == load_factor_uppers_simplified[i-1]][0]
-            else:
-                lower_index = 0
-
-            self.efficiency_simplified.append(min(self.efficiency[lower_index:upper_index+1]))
-
-        return self
+            self.efficiency[0] = 0.789
+            self.efficiency[1] = 0.794
+            self.efficiency[2] = 0.792
 
 
 class CombinedTank():

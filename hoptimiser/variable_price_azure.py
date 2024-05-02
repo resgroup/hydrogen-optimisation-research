@@ -5,7 +5,7 @@ import os
 import sys
 import json
 
-from hoptimiser.control_algorithm import LPcontrol, BasicControlDay, NoStorageDay
+from hoptimiser.control_algorithm import LPcontrol, LPcontrol10#,BasicControlDay, NoStorageDay
 from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
 from hoptimiser.component_classes import CombinedElectrolyser, CombinedTank
 from hoptimiser.read_time_series_data import read_ts_data
@@ -14,37 +14,32 @@ from hoptimiser.config import PROJECT_ROOT_DIR
 
 class Analysis():
 
-    def __init__(self, input_combination: list):
+    def __init__(self, input_combination: list, run_in_azure: bool):
 
         input_combination_list = [int(el) for el in input_combination[1:-1].split(',')]
 
         self.input_combination = input_combination_list
+        self.run_in_azure = run_in_azure
 
     def run(self):
 
-        # input_file_name_components = os.path.join(
-        #     PROJECT_ROOT_DIR, 'inputs',
-        #     'component_inputs.xlsx',
-        # )
-        # input_demand_profiles = os.path.join(
-        #     PROJECT_ROOT_DIR, 'inputs',
-        #     'demand_profiles.csv',
-        # )
-        # input_price_profiles = os.path.join(
-        #     PROJECT_ROOT_DIR, 'inputs',
-        #     'price_profiles.csv',
-        # )
+        if self.run_in_azure:
+            input_dir = PROJECT_ROOT_DIR
+            output_dir_high_level = PROJECT_ROOT_DIR
+        else:
+            input_dir = r'C:\\Users\\tyoung\\Documents\\GitHub\\hydrogen-optimisation-research\inputs'
+            output_dir_high_level = r'C:\\Users\\tyoung\\Documents\\GitHub\\hydrogen-optimisation-research\results'
 
         input_file_name_components = os.path.join(
-            PROJECT_ROOT_DIR,
+            input_dir,
             'component_inputs.xlsx',
         )
         input_demand_profiles = os.path.join(
-            PROJECT_ROOT_DIR,
+            input_dir,
             'demand_profiles.csv',
         )
         input_price_profiles = os.path.join(
-            PROJECT_ROOT_DIR,
+            input_dir,
             'price_profiles.csv',
         )
 
@@ -80,7 +75,7 @@ class Analysis():
             kwh_per_kg = 39.3
 
         data = read_ts_data(input_demand_profiles, input_price_profiles)
-
+        data = data[300:900]
         first_operational_year = data_years.loc[0,'CalendarYear']
         n_years = len(data_years)
 
@@ -92,7 +87,7 @@ class Analysis():
         n_tanks = self.input_combination[3]
         stack_replacement_years = self.input_combination[4:]
 
-        electrolyser = CombinedElectrolyser(selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, n_years, electrolyser_min_capacity = 0.1)
+        electrolyser = CombinedElectrolyser(selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, n_years, electrolyser_min_capacity = 0.1, optimise_efficiencies=False)
         tank = CombinedTank(selected_tank, n_tanks)
 
         electrolyser.combined_stack_and_efficiencies_df = electrolyser.combined_stack_and_efficiencies_df.merge(data_years)
@@ -108,11 +103,18 @@ class Analysis():
         failed_combination_flag = False
         output_dir = str(self.input_combination)[1:-1].replace(",", "_").replace(" ", "")
 
+        dir_to_create = os.path.join(output_dir_high_level,output_dir)
+
+        if not self.run_in_azure:
+            if not os.path.exists(dir_to_create):
+                os.mkdir(dir_to_create)
+
         for analysis_year in range(0, len(unique_years)):
 
             price_year = unique_years.loc[analysis_year, 'PriceYear']
             demand_year = unique_years.loc[analysis_year, 'DemandYear']
-            efficiency_adjustment = unique_years.loc[analysis_year, 'minimum_relative_efficiency']
+            #todo set this back!!!!!!!!!!!!!!!
+            efficiency_adjustment = 1.0#unique_years.loc[analysis_year, 'minimum_relative_efficiency']
             data['demand'] = data[demand_year]
             data['price'] = data[str(price_year)]
 
@@ -184,7 +186,7 @@ class Analysis():
                         price_array = data_day.price
                         demand_array = data_day.demand
 
-                        day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
+                        day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol10(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
 
                     if not failed_combination_flag:
 
@@ -207,14 +209,8 @@ class Analysis():
 
                     print('Days curtailed due to solver time limit = ',days_with_solver_time_curtailed)
 
-
-                    # results_df.to_csv(os.path.join(
-                    #     PROJECT_ROOT_DIR, 'results',
-                    #     str(analysis_year)+'_'+str(self.input_combination)+'_output_time_series.csv',
-                    # ))
-
                     results_df.to_csv(os.path.join(
-                        PROJECT_ROOT_DIR,
+                        output_dir_high_level,
                         output_dir,
                         str(analysis_year)+'_'+str(self.input_combination)+'_output_time_series.csv',
                     ))
@@ -249,7 +245,6 @@ class Analysis():
             results_years.loc[0,'electrolyser_capex'] = electrolyser.capex
             results_years.loc[0, 'tank_capex'] = tank.capex
             results_years['other_energy_costs'] = annual_additonal_costs + annual_admin_costs
-            #todo calculate other energy costs e.g. using sleeving fee etc.
 
             levilised_cost = np.dot(results_years['electricity_cost'], results_years['discount_factor'])
             levilised_cost += np.dot(results_years['other_energy_costs'], results_years['discount_factor'])
@@ -265,14 +260,9 @@ class Analysis():
             lcoh2 = levilised_cost / levilised_production
 
             print('lcoh2 = ', lcoh2)
-            print(PROJECT_ROOT_DIR)
-            # results_years.to_csv(os.path.join(
-            #     PROJECT_ROOT_DIR,'results',
-            #     str(self.input_combination) + '_output_annual_results.csv',
-            # ))
 
             results_years.to_csv(os.path.join(
-                PROJECT_ROOT_DIR,
+                output_dir_high_level,
                 output_dir,
                 str(self.input_combination) + '_output_annual_results.csv',
             ))
@@ -288,7 +278,7 @@ class Analysis():
         #         'total_time_taken': str(time_taken),
         #     }, f, indent=2)
 
-        with open(os.path.join(PROJECT_ROOT_DIR, output_dir, 'lcoh2_result.json'), 'w', encoding='utf-8') as f:
+        with open(os.path.join(output_dir_high_level, output_dir, 'lcoh2_result.json'), 'w', encoding='utf-8') as f:
             json.dump({
                 'combination': self.input_combination,
                 'lcoh2': lcoh2,
@@ -299,13 +289,14 @@ class Analysis():
 
 if __name__ == "__main__":
 
-    if len(sys.argv) == 2:
+    if len(sys.argv) == 3:
         input_combination = sys.argv[1]
+        run_in_azure = sys.argv[2]
     else:
         raise Exception(f'Invalid number of command line arguments:{len(sys.argv)}')
 
     analysis = Analysis(
-        input_combination=input_combination
+        input_combination=input_combination, run_in_azure=run_in_azure
     )
 
     lcoh2_this_combination = round(analysis.run(),1)
