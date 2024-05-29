@@ -5,7 +5,7 @@ import os
 import sys
 import json
 
-from hoptimiser.control_algorithm import LPcontrol, LPcontrol10#,BasicControlDay, NoStorageDay
+from hoptimiser.control_algorithm import LPcontrol5, LPcontrol10#,BasicControlDay, NoStorageDay
 from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
 from hoptimiser.component_classes import CombinedElectrolyser, CombinedTank
 from hoptimiser.read_time_series_data import read_ts_data
@@ -14,12 +14,13 @@ from hoptimiser.config import PROJECT_ROOT_DIR
 
 class Analysis():
 
-    def __init__(self, input_combination: list, run_in_azure: bool):
+    def __init__(self, input_combination: list, run_in_azure: bool, reduce_efficiencies: bool):
 
         input_combination_list = [int(el) for el in input_combination[1:-1].split(',')]
 
         self.input_combination = input_combination_list
         self.run_in_azure = run_in_azure
+        self.reduce_efficiencies = reduce_efficiencies
 
     def run(self):
 
@@ -46,7 +47,7 @@ class Analysis():
         tank_df, electrolyser_df, data_years = read_component_data(input_file_name_components)
 
         start_time = datetime.datetime.now()
-        lp_solver_time_limit_seconds = 0.5
+        lp_solver_time_limit_seconds = 1.0
 
         #Todo: the code assumes that we pay per MWh at the POI, and then counts line losses from there to the electrolyser.
         # Need to confirm that this is right
@@ -75,7 +76,7 @@ class Analysis():
             kwh_per_kg = 39.3
 
         data = read_ts_data(input_demand_profiles, input_price_profiles)
-        data = data[300:900]
+
         first_operational_year = data_years.loc[0,'CalendarYear']
         n_years = len(data_years)
 
@@ -87,7 +88,7 @@ class Analysis():
         n_tanks = self.input_combination[3]
         stack_replacement_years = self.input_combination[4:]
 
-        electrolyser = CombinedElectrolyser(selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, n_years, electrolyser_min_capacity = 0.1, optimise_efficiencies=False)
+        electrolyser = CombinedElectrolyser(selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, n_years, electrolyser_min_capacity = 0.1, reduce_efficiencies=True, optimise_efficiencies=False)
         tank = CombinedTank(selected_tank, n_tanks)
 
         electrolyser.combined_stack_and_efficiencies_df = electrolyser.combined_stack_and_efficiencies_df.merge(data_years)
@@ -113,8 +114,7 @@ class Analysis():
 
             price_year = unique_years.loc[analysis_year, 'PriceYear']
             demand_year = unique_years.loc[analysis_year, 'DemandYear']
-            #todo set this back!!!!!!!!!!!!!!!
-            efficiency_adjustment = 1.0#unique_years.loc[analysis_year, 'minimum_relative_efficiency']
+            efficiency_adjustment = unique_years.loc[analysis_year, 'minimum_relative_efficiency']
             data['demand'] = data[demand_year]
             data['price'] = data[str(price_year)]
 
@@ -186,7 +186,11 @@ class Analysis():
                         price_array = data_day.price
                         demand_array = data_day.demand
 
-                        day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol10(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
+                        if self.reduce_efficiencies:
+                            day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol5(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
+                        else:
+                            day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol10(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
+
 
                     if not failed_combination_flag:
 

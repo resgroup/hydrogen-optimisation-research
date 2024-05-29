@@ -14,7 +14,7 @@ class HoptimiserLocalRunner:
         for combination in self.combinations:
 
             analysis = Analysis(
-                input_combination=str(combination), run_in_azure=False
+                input_combination=str(combination), run_in_azure=False, reduce_efficiencies=True
             )
 
             lcoh2_this_combination = round(analysis.run(), 1)

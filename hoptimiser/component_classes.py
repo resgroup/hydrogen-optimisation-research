@@ -2,12 +2,19 @@ import pandas as pd
 
 
 class CombinedElectrolyser():
-    def __init__(self, selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, n_years, electrolyser_min_capacity = 0.1, optimise_efficiencies = False):
+    def __init__(self, selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, n_years, electrolyser_min_capacity = 0.1, reduce_efficiencies=True, optimise_efficiencies=False):
 
         self.max_power = selected_electrolyser['Capacity (MW)'] * 1000 * n_electrolysers
         self.min_power = max(selected_electrolyser['Capacity (MW)'] * 1000 * electrolyser_min_capacity, 1E-4)
         self.efficiency_load_factor = selected_electrolyser['electrolyser_efficiency_load_factors'][0]
         self.efficiency = selected_electrolyser['electrolyser_efficiency'][0]
+        self.full_efficiency = self.efficiency.copy()
+        self.full_efficiency_load_factor = self.efficiency_load_factor.copy()
+
+        if reduce_efficiencies:
+            self._reduce_efficiencies()
+            optimise_efficiencies = False
+
         self.capex = selected_electrolyser['CAPEX'] * n_electrolysers
         self.opex_per_year = selected_electrolyser['OPEX (£/year)'] * n_electrolysers
         self.floor_space = int(selected_electrolyser['Floor Space (m2)'] * n_electrolysers)
@@ -78,6 +85,25 @@ class CombinedElectrolyser():
             self.efficiency[1] = 0.794
             self.efficiency[2] = 0.792
 
+    def _reduce_efficiencies(self):
+        reduced_efficiency = []
+        reduced_efficiency.append(self.efficiency[0])
+        reduced_efficiency.append(self.efficiency[2])
+        reduced_efficiency.append(self.efficiency[4])
+        reduced_efficiency.append(self.efficiency[6])
+        reduced_efficiency.append(self.efficiency[8])
+        reduced_efficiency.append(self.efficiency[9])
+
+        reduced_load_factor = []
+        reduced_load_factor.append(self.efficiency_load_factor[0])
+        reduced_load_factor.append(self.efficiency_load_factor[2])
+        reduced_load_factor.append(self.efficiency_load_factor[4])
+        reduced_load_factor.append(self.efficiency_load_factor[6])
+        reduced_load_factor.append(self.efficiency_load_factor[8])
+        reduced_load_factor.append(self.efficiency_load_factor[9])
+
+        self.efficiency = reduced_efficiency
+        self.efficiency_load_factor = reduced_load_factor
 
 class CombinedTank():
     def __init__(self, selected_tank, n_tanks, min_storage_kwh=2000):
