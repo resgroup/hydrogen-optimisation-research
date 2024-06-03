@@ -30,10 +30,16 @@ class MultiDimensionalLpVariable:
         f = np.vectorize(lambda i: pulp.value(i))
         self.values = f(self.variables)
 
-def LPcontrol5(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag):
+def LPcontrol5(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag):
 
     #todo decide whether we need to add a tank max charge rate
     #todo decide whether we need to check the floor area
+
+    date_array = data_day.Time
+    price_array = data_day.combined_price
+    import_price_array = data_day.import_price
+    uos_price_array = data_day.uos_charge
+    demand_array = data_day.demand
 
     day_complete = False
     failure_counter = 0
@@ -167,6 +173,8 @@ def LPcontrol5(data_day, date_array, price_array, demand_array, day_results_df, 
         h2_to_storage = np.zeros(48)
         cost_array = np.zeros(48)
         corrected_cost_array = np.zeros(48)
+        imports_cost_array = np.zeros(48)
+        uos_cost_array = np.zeros(48)
 
         h2_produced_kWh_result = price_array.copy()
 
@@ -177,6 +185,9 @@ def LPcontrol5(data_day, date_array, price_array, demand_array, day_results_df, 
             real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.max_power, electrolyser.full_efficiency_load_factor, adjusted_full_efficiency_curve)
             cost_array[i] = (electrolyser_kW_result[i] / (1000 * line_losses_after_poi)) * price_array[i] * 0.5
             corrected_cost_array[i] = (h2_produced_kWh_result[i] * price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
+            imports_cost_array[i] = (h2_produced_kWh_result[i] * import_price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
+            uos_cost_array[i] = (h2_produced_kWh_result[i] * uos_price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
+
             h2_in_storage_tracker = (h2_in_storage_tracker + h2_to_storage[i]) * tank.remaining_fraction_after_half_hour
             h2_in_storage[i] = h2_in_storage_tracker
 
@@ -192,16 +203,24 @@ def LPcontrol5(data_day, date_array, price_array, demand_array, day_results_df, 
         day_results_df['h2_produced_kWh'] = h2_produced_kWh_result[0:48]
         day_results_df['h2_to_storage_kWh'] = h2_to_storage[0:48]
         day_results_df['h2_in_storage_kWh'] = h2_in_storage[0:48]
-        day_results_df['h2_cost'] = cost_array[0:48]
-        day_results_df['h2_cost_corrected'] = corrected_cost_array[0:48]
+        day_results_df['h2_cost_total_solver'] = cost_array[0:48]
+        day_results_df['h2_cost_total'] = corrected_cost_array[0:48]
+        day_results_df['h2_cost_imports'] = imports_cost_array[0:48]
+        day_results_df['h2_cost_uos'] = uos_cost_array[0:48]
 
     return(day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag)
 
 
-def LPcontrol10(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag):
+def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag):
 
     #todo decide whether we need to add a tank max charge rate
     #todo decide whether we need to check the floor area
+
+    date_array = data_day.Time
+    price_array = data_day.combined_price
+    import_price_array = data_day.import_price
+    uos_price_array = data_day.uos_charge
+    demand_array = data_day.demand
 
     day_complete = False
     failure_counter = 0
@@ -372,6 +391,8 @@ def LPcontrol10(data_day, date_array, price_array, demand_array, day_results_df,
         h2_to_storage = np.zeros(48)
         cost_array = np.zeros(48)
         corrected_cost_array = np.zeros(48)
+        imports_cost_array = np.zeros(48)
+        uos_cost_array = np.zeros(48)
 
         h2_produced_kWh_result = price_array.copy()
 
@@ -382,6 +403,8 @@ def LPcontrol10(data_day, date_array, price_array, demand_array, day_results_df,
             real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.max_power, electrolyser.efficiency_load_factor, adjusted_full_efficiency_curve)
             cost_array[i] = (electrolyser_kW_result[i] / (1000 * line_losses_after_poi)) * price_array[i] * 0.5
             corrected_cost_array[i] = (h2_produced_kWh_result[i] * price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
+            imports_cost_array[i] = (h2_produced_kWh_result[i] * import_price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
+            uos_cost_array[i] = (h2_produced_kWh_result[i] * uos_price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
             h2_in_storage_tracker = (h2_in_storage_tracker + h2_to_storage[i]) * tank.remaining_fraction_after_half_hour
             h2_in_storage[i] = h2_in_storage_tracker
 
@@ -402,8 +425,10 @@ def LPcontrol10(data_day, date_array, price_array, demand_array, day_results_df,
         day_results_df['h2_produced_kWh'] = h2_produced_kWh_result[0:48]
         day_results_df['h2_to_storage_kWh'] = h2_to_storage[0:48]
         day_results_df['h2_in_storage_kWh'] = h2_in_storage[0:48]
-        day_results_df['h2_cost'] = cost_array[0:48]
-        day_results_df['h2_cost_corrected'] = corrected_cost_array[0:48]
+        day_results_df['h2_cost_total_solver'] = cost_array[0:48]
+        day_results_df['h2_cost_total'] = corrected_cost_array[0:48]
+        day_results_df['h2_cost_imports'] = imports_cost_array[0:48]
+        day_results_df['h2_cost_uos'] = uos_cost_array[0:48]
 
     return(day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag)
 

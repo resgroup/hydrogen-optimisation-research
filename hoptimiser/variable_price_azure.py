@@ -67,7 +67,7 @@ class Analysis():
 
         daily_fixed_charge_total = (daily_capacity_charge * grid_import_max_power / (1000 * power_factor)) + daily_fixed_charge + daily_TNUOS_charge
         annual_fixed_charge = daily_fixed_charge_total * 365.25
-        annual_additonal_costs = annual_fixed_charge #todo annual_additonal_costs total so far only includes FixedNonComm from results sheet. We need to include ImportNonComm and OffsiteNonComm costs
+        annual_additonal_costs = annual_fixed_charge #todo annual_additonal_costs total so far only includes FixedNonComm from results sheet. We need to include ImportNonComm (time of use charges) and OffsiteNonComm costs
         annual_admin_costs = annual_additonal_costs * sleeving_fee
 
         if h2_heating_value == 'lower':
@@ -75,7 +75,7 @@ class Analysis():
         else:
             kwh_per_kg = 39.3
 
-        data = read_ts_data(input_demand_profiles, input_price_profiles)
+        data = read_ts_data(input_demand_profiles, input_price_profiles, input_file_name_components)
 
         first_operational_year = data_years.loc[0,'CalendarYear']
         n_years = len(data_years)
@@ -116,7 +116,8 @@ class Analysis():
             demand_year = unique_years.loc[analysis_year, 'DemandYear']
             efficiency_adjustment = unique_years.loc[analysis_year, 'minimum_relative_efficiency']
             data['demand'] = data[demand_year]
-            data['price'] = data[str(price_year)]
+            data['import_price'] = data[str(price_year)]
+            data['combined_price'] = data['import_price'] + data['uos_charge']
 
             electrolyser.max_power = min(grid_import_max_power * line_losses_after_poi, electrolyser.max_power)
 
@@ -157,6 +158,8 @@ class Analysis():
                 #todo lookup floor area of electrolysers and tanks and ensure it doesn't exceed the max floor area
 
                 total_cost = 0
+                total_import_cost = 0
+                total_uos_cost = 0
                 day_start_h2_in_storage_kwh = tank.starting_storage_kwh
 
                 results_df = pd.DataFrame(columns=['datetime','price','h2_demand_kWh','h2_produced_kWh','h2_to_storage_kWh','h2_in_storage_kWh'])
@@ -179,17 +182,14 @@ class Analysis():
                         #Guess that first 12 hours of following day will have the same price and demand as this day:
 
                         data_day = data_day.reset_index()
+                        data_day = data_day.drop(columns=['level_0', 'index'])
                         data_day = pd.concat([data_day, data_day.loc[0:23, :]])
                         data_day = data_day.reset_index()
 
-                        date_array = data_day.Time
-                        price_array = data_day.price
-                        demand_array = data_day.demand
-
                         if self.reduce_efficiencies:
-                            day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol5(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
+                            day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol5(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
                         else:
-                            day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol10(data_day, date_array, price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
+                            day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag = LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag)
 
 
                     if not failed_combination_flag:
@@ -199,7 +199,10 @@ class Analysis():
                         day_start_storage_remaining.loc[i, 'date'] = day_results_df['datetime'][47]
                         day_start_storage_remaining.loc[i,'remaining'] = day_start_h2_in_storage_kwh
                         i += 1
-                        total_cost += day_results_df['h2_cost_corrected'].sum()
+                        total_cost += day_results_df['h2_cost_total'].sum()
+                        total_import_cost += day_results_df['h2_cost_imports'].sum()
+                        total_uos_cost += day_results_df['h2_cost_uos'].sum()
+
 
                         results_df = pd.concat([results_df, day_results_df])
 
@@ -221,7 +224,9 @@ class Analysis():
 
                     combined_lookup = unique_years['combined'][analysis_year]
 
-                    results_years.loc[results_years['combined'] == combined_lookup, 'electricity_cost'] = round(total_cost, 2) * results_years.loc[results_years['combined'] == combined_lookup, 'cost_reduction_factor']
+                    results_years.loc[results_years['combined'] == combined_lookup, 'total_elec_cost'] = round(total_cost, 2) * results_years.loc[results_years['combined'] == combined_lookup, 'cost_reduction_factor']
+                    results_years.loc[results_years['combined'] == combined_lookup, 'import_elec_cost'] = round(total_import_cost, 2) * results_years.loc[results_years['combined'] == combined_lookup, 'cost_reduction_factor']
+                    results_years.loc[results_years['combined'] == combined_lookup, 'uos_elec_cost'] = round(total_uos_cost, 2) * results_years.loc[results_years['combined'] == combined_lookup, 'cost_reduction_factor']
                     results_years.loc[results_years['combined'] == combined_lookup, 'h2_to_demand_kWh'] = round(data.demand.sum(),2)
                     results_years.loc[results_years['combined'] == combined_lookup, 'h2_to_demand_kg'] = round(data.demand.sum(),2) / kwh_per_kg
                     results_years.loc[results_years['combined'] == combined_lookup, 'water_cost'] = round(data.demand.sum(),2) * water_price_per_litre * water_needed_per_mwh_h2 / 1000
@@ -248,7 +253,8 @@ class Analysis():
             results_years['tank_opex_yr'] = tank.opex_per_year
             results_years.loc[0,'electrolyser_capex'] = electrolyser.capex
             results_years.loc[0, 'tank_capex'] = tank.capex
-            results_years['other_energy_costs'] = annual_additonal_costs + annual_admin_costs
+            results_years['other_energy_costs'] = annual_additonal_costs
+            results_years['sleeving_cost'] = annual_admin_costs
 
             levilised_cost = np.dot(results_years['electricity_cost'], results_years['discount_factor'])
             levilised_cost += np.dot(results_years['other_energy_costs'], results_years['discount_factor'])
