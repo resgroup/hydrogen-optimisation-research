@@ -222,7 +222,7 @@ def LPcontrol5(data_day, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_
     return(day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag, mean_production_price)
 
 
-def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag, supplier_fee_per_mwh):
+def LPcontrol10(data_day, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag, supplier_fee_per_mwh):
 
     #todo decide whether we need to add a tank max charge rate
     #todo decide whether we need to check the floor area
@@ -425,6 +425,7 @@ def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_loss
 
         mean_production_price = np.mean(import_price_array[0:48][h2_produced_kWh_result[0:48] > 0])
 
+        day_results_df = pd.DataFrame()
         day_results_df['datetime'] = date_array[0:48]
         day_results_df['import_price'] = import_price_array[0:48]
         day_results_df['uos_price'] = uos_price_array[0:48]
