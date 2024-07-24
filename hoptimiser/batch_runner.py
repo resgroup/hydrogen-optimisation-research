@@ -1,14 +1,12 @@
 import os
-import json
 import tarfile
-from itertools import product
 import pandas as pd
 
 from batch_submission.blob import upload_file_to_container
 from batch_submission.batch_submission import BatchSubmission
 from batch_submission.monitor import Monitor
 
-from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
+from component_inputs_reader import read_component_data, populate_combinations
 
 class HoptimiserBatchRunner:
 
@@ -27,7 +25,7 @@ class HoptimiserBatchRunner:
         self.task_list: list = []
 
     def _zip_up_core_scripts(self) -> None:
-        with tarfile.open('core.tar.gz', 'w:gz') as core_tar:
+        with tarfile.open('../examples/azure_batch/core.tar.gz', 'w:gz') as core_tar:
             core_tar.add('batch_environment.yml',
                          os.path.basename('batch_environment.yml'))
 
@@ -68,7 +66,7 @@ class HoptimiserBatchRunner:
 
                     'source activate hoptimiser',
 
-                    f'python -m hoptimiser.variable_price_azure {str_c} &> {output_dir}/log.txt'
+                    f'python -m hoptimiser.variable_price_azure {str_c} True &> {output_dir}/log.txt'
                 ],
                 "output_file_pattern_list": [
                     '*/log.txt',
@@ -84,7 +82,7 @@ class HoptimiserBatchRunner:
     def _cleanup(self) -> None:
         self.batch_job.cleanup()
         try:
-            os.remove('core.tar.gz')
+            os.remove('../examples/azure_batch/core.tar.gz')
             os.remove('task.tar.gz')
         except:
             pass
@@ -93,7 +91,7 @@ class HoptimiserBatchRunner:
         self._zip_up_core_scripts()
         self.batch_job.create_containers()
         self.batch_job.upload_files(
-            setup_files_path='core.tar.gz',
+            setup_files_path='../examples/azure_batch/core.tar.gz',
             tasks_file_paths=['task.tar.gz']
         )
         self._build_task_list()
@@ -121,11 +119,11 @@ class HoptimiserBatchRunner:
 
 if __name__ == '__main__':
 
-    analysis_name = 'test-analysis'
+    analysis_name = 'test-analysis-full-years'
 
-    maximum_nodes = 100
+    maximum_nodes = 350
 
-    input_file_name_components = r'C:\Users\tyoung\Documents\GitHub\hydrogen-optimisation-research\inputs\component_inputs.xlsx'
+    input_file_name_components = r'/inputs/component_inputs.xlsx'
     tank_df, electrolyser_df, data_years = read_component_data(input_file_name_components)
     combinations = populate_combinations(tank_df, electrolyser_df, input_file_name_components)
 
@@ -138,7 +136,7 @@ if __name__ == '__main__':
         batch_job=batch_runner.batch_job,
     )
     print('Number of combinations = ', len(combinations))
-    #monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
+    monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
 
     batch_runner.run()
 
@@ -151,7 +149,7 @@ if __name__ == '__main__':
         tank_df=tank_df
     )
 
-    results = pd.read_csv('batch_results.csv')
+    results = pd.read_csv('../examples/azure_batch/batch_results.csv')
 
     results['electrolyser_id'] = None
     results['number_of_electrolysers'] = None

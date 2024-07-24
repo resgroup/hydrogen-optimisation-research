@@ -1,6 +1,7 @@
 import numpy as np
 from pulp import pulp, LpProblem, LpMinimize, PULP_CBC_CMD, COIN
 import datetime
+import pandas as pd
 
 class MultiDimensionalLpVariable:
     def __init__(self, name, dimensions, low_bound, up_bound, cat):
@@ -30,7 +31,7 @@ class MultiDimensionalLpVariable:
         f = np.vectorize(lambda i: pulp.value(i))
         self.values = f(self.variables)
 
-def LPcontrol5(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag):
+def LPcontrol5(data_day, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag, supplier_fee_per_mwh):
 
     #todo decide whether we need to add a tank max charge rate
     #todo decide whether we need to check the floor area
@@ -52,10 +53,10 @@ def LPcontrol5(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losse
 
         cost = 0
 
-        electrolyser_kW_level_1 = MultiDimensionalLpVariable('electrolyser_kW_1', len(data_day), 0, electrolyser.efficiency_load_factor[1] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_2 = MultiDimensionalLpVariable('electrolyser_kW_2', len(data_day), 0, electrolyser.efficiency_load_factor[2] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_3 = MultiDimensionalLpVariable('electrolyser_kW_3', len(data_day), 0, electrolyser.efficiency_load_factor[3] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_4 = MultiDimensionalLpVariable('electrolyser_kW_4', len(data_day), 0, electrolyser.efficiency_load_factor[4] * electrolyser.max_power, "Continuous")
+        electrolyser_kW_level_1 = MultiDimensionalLpVariable('electrolyser_kW_1', len(data_day), 0, electrolyser.efficiency_load_factor[1] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_2 = MultiDimensionalLpVariable('electrolyser_kW_2', len(data_day), 0, electrolyser.efficiency_load_factor[2] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_3 = MultiDimensionalLpVariable('electrolyser_kW_3', len(data_day), 0, electrolyser.efficiency_load_factor[3] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_4 = MultiDimensionalLpVariable('electrolyser_kW_4', len(data_day), 0, electrolyser.efficiency_load_factor[4] * electrolyser.rated_power, "Continuous")
         electrolyser_kW_level_5 = MultiDimensionalLpVariable('electrolyser_kW_5', len(data_day), 0, electrolyser.efficiency_load_factor[5] * electrolyser.max_power, "Continuous")
 
         electrolyser_turned_on_level_1 = MultiDimensionalLpVariable('electrolyser_turned_on_1', len(data_day), 0, 1, cat = "Binary")
@@ -103,20 +104,20 @@ def LPcontrol5(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losse
 
             problem += storage_overfill <= 0
 
-            problem += electrolyser_kW_level_1[i] <= electrolyser_turned_on_level_1[i] * electrolyser.efficiency_load_factor[1] * electrolyser.max_power
+            problem += electrolyser_kW_level_1[i] <= electrolyser_turned_on_level_1[i] * electrolyser.efficiency_load_factor[1] * electrolyser.rated_power
             problem += electrolyser_kW_level_1[i] >= electrolyser_turned_on_level_1[i] * electrolyser.min_power
 
-            problem += electrolyser_kW_level_2[i] <= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor[2] * electrolyser.max_power
-            problem += electrolyser_kW_level_2[i] >= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor[1] * electrolyser.max_power
+            problem += electrolyser_kW_level_2[i] <= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor[2] * electrolyser.rated_power
+            problem += electrolyser_kW_level_2[i] >= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor[1] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_3[i] <= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor[3] * electrolyser.max_power
-            problem += electrolyser_kW_level_3[i] >= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor[2] * electrolyser.max_power
+            problem += electrolyser_kW_level_3[i] <= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor[3] * electrolyser.rated_power
+            problem += electrolyser_kW_level_3[i] >= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor[2] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_4[i] <= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor[4] * electrolyser.max_power
-            problem += electrolyser_kW_level_4[i] >= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor[3] * electrolyser.max_power
+            problem += electrolyser_kW_level_4[i] <= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor[4] * electrolyser.rated_power
+            problem += electrolyser_kW_level_4[i] >= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor[3] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_5[i] <= electrolyser_turned_on_level_5[i] * electrolyser.efficiency_load_factor[5] * electrolyser.max_power
-            problem += electrolyser_kW_level_5[i] >= electrolyser_turned_on_level_5[i] * electrolyser.efficiency_load_factor[4] * electrolyser.max_power
+            problem += electrolyser_kW_level_5[i] <= electrolyser_turned_on_level_5[i] * electrolyser.max_power
+            problem += electrolyser_kW_level_5[i] >= electrolyser_turned_on_level_5[i] * electrolyser.efficiency_load_factor[4] * electrolyser.rated_power
 
             problem += electrolyser_turned_on_level_1[i] + electrolyser_turned_on_level_2[i] + electrolyser_turned_on_level_3[i] + electrolyser_turned_on_level_4[i] + electrolyser_turned_on_level_5[i] <= 1
 
@@ -175,6 +176,7 @@ def LPcontrol5(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losse
         corrected_cost_array = np.zeros(48)
         imports_cost_array = np.zeros(48)
         uos_cost_array = np.zeros(48)
+        supplier_fee_cost_array = np.zeros(48)
 
         h2_produced_kWh_result = price_array.copy()
 
@@ -182,17 +184,22 @@ def LPcontrol5(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losse
 
             h2_produced_kWh_result[i] = 0.5 * ((electrolyser_kW_level_1.values[i] * adjusted_efficiency_1) + (electrolyser_kW_level_2.values[i] * adjusted_efficiency_2) + (electrolyser_kW_level_3.values[i] * adjusted_efficiency_3) + (electrolyser_kW_level_4.values[i] * adjusted_efficiency_4) + (electrolyser_kW_level_5.values[i] * adjusted_efficiency_5))
             h2_to_storage[i] = h2_produced_kWh_result[i] - demand_array[i]
-            real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.max_power, electrolyser.full_efficiency_load_factor, adjusted_full_efficiency_curve)
+            real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.rated_power, electrolyser.full_efficiency_load_factor, adjusted_full_efficiency_curve)
             cost_array[i] = (electrolyser_kW_result[i] / (1000 * line_losses_after_poi)) * price_array[i] * 0.5
             corrected_cost_array[i] = (h2_produced_kWh_result[i] * price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
             imports_cost_array[i] = (h2_produced_kWh_result[i] * import_price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
             uos_cost_array[i] = (h2_produced_kWh_result[i] * uos_price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
+            supplier_fee_cost_array[i] = (h2_produced_kWh_result[i] * supplier_fee_per_mwh) / (1000 * real_efficiency * line_losses_after_poi)
 
             h2_in_storage_tracker = (h2_in_storage_tracker + h2_to_storage[i]) * tank.remaining_fraction_after_half_hour
             h2_in_storage[i] = h2_in_storage_tracker
 
+        mean_production_price = np.mean(import_price_array[0:48][h2_produced_kWh_result[0:48] > 0])
+
+        day_results_df = pd.DataFrame()
         day_results_df['datetime'] = date_array[0:48]
-        day_results_df['price'] = price_array[0:48]
+        day_results_df['import_price'] = import_price_array[0:48]
+        day_results_df['uos_price'] = uos_price_array[0:48]
         day_results_df['h2_demand_kWh'] = demand_array[0:48]
         day_results_df['electrolyser_kW'] = electrolyser_kW_result[0:48]
         day_results_df['electrolyser_kW_1'] = electrolyser_kW_level_1.values[0:48]
@@ -207,11 +214,15 @@ def LPcontrol5(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losse
         day_results_df['h2_cost_total'] = corrected_cost_array[0:48]
         day_results_df['h2_cost_imports'] = imports_cost_array[0:48]
         day_results_df['h2_cost_uos'] = uos_cost_array[0:48]
+        day_results_df['h2_cost_supplier_fee'] = supplier_fee_cost_array[0:48]
 
-    return(day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag)
+    else:
+        mean_production_price = 'NaN'
+
+    return(day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag, mean_production_price)
 
 
-def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag):
+def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_solver_time_limit_seconds, electrolyser, tank, efficiency_adjustment, end_of_day_storage_target, end_of_day_storage_increase_per_day, max_h2_production, failed_combination_flag, supplier_fee_per_mwh):
 
     #todo decide whether we need to add a tank max charge rate
     #todo decide whether we need to check the floor area
@@ -233,15 +244,15 @@ def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_loss
 
         cost = 0
 
-        electrolyser_kW_level_1 = MultiDimensionalLpVariable('electrolyser_kW_1', len(data_day), 0, electrolyser.efficiency_load_factor[0] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_2 = MultiDimensionalLpVariable('electrolyser_kW_2', len(data_day), 0, electrolyser.efficiency_load_factor[1] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_3 = MultiDimensionalLpVariable('electrolyser_kW_3', len(data_day), 0, electrolyser.efficiency_load_factor[2] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_4 = MultiDimensionalLpVariable('electrolyser_kW_4', len(data_day), 0, electrolyser.efficiency_load_factor[3] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_5 = MultiDimensionalLpVariable('electrolyser_kW_5', len(data_day), 0, electrolyser.efficiency_load_factor[4] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_6 = MultiDimensionalLpVariable('electrolyser_kW_6', len(data_day), 0, electrolyser.efficiency_load_factor[5] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_7 = MultiDimensionalLpVariable('electrolyser_kW_7', len(data_day), 0, electrolyser.efficiency_load_factor[6] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_8 = MultiDimensionalLpVariable('electrolyser_kW_8', len(data_day), 0, electrolyser.efficiency_load_factor[7] * electrolyser.max_power, "Continuous")
-        electrolyser_kW_level_9 = MultiDimensionalLpVariable('electrolyser_kW_9', len(data_day), 0, electrolyser.efficiency_load_factor[8] * electrolyser.max_power, "Continuous")
+        electrolyser_kW_level_1 = MultiDimensionalLpVariable('electrolyser_kW_1', len(data_day), 0, electrolyser.efficiency_load_factor[0] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_2 = MultiDimensionalLpVariable('electrolyser_kW_2', len(data_day), 0, electrolyser.efficiency_load_factor[1] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_3 = MultiDimensionalLpVariable('electrolyser_kW_3', len(data_day), 0, electrolyser.efficiency_load_factor[2] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_4 = MultiDimensionalLpVariable('electrolyser_kW_4', len(data_day), 0, electrolyser.efficiency_load_factor[3] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_5 = MultiDimensionalLpVariable('electrolyser_kW_5', len(data_day), 0, electrolyser.efficiency_load_factor[4] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_6 = MultiDimensionalLpVariable('electrolyser_kW_6', len(data_day), 0, electrolyser.efficiency_load_factor[5] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_7 = MultiDimensionalLpVariable('electrolyser_kW_7', len(data_day), 0, electrolyser.efficiency_load_factor[6] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_8 = MultiDimensionalLpVariable('electrolyser_kW_8', len(data_day), 0, electrolyser.efficiency_load_factor[7] * electrolyser.rated_power, "Continuous")
+        electrolyser_kW_level_9 = MultiDimensionalLpVariable('electrolyser_kW_9', len(data_day), 0, electrolyser.efficiency_load_factor[8] * electrolyser.rated_power, "Continuous")
         electrolyser_kW_level_10 = MultiDimensionalLpVariable('electrolyser_kW_10', len(data_day), 0, electrolyser.efficiency_load_factor[9] * electrolyser.max_power, "Continuous")
 
 
@@ -300,35 +311,35 @@ def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_loss
 
             problem += storage_overfill <= 0
 
-            problem += electrolyser_kW_level_1[i] <= electrolyser_turned_on_level_1[i] * electrolyser.efficiency_load_factor[0] * electrolyser.max_power
+            problem += electrolyser_kW_level_1[i] <= electrolyser_turned_on_level_1[i] * electrolyser.efficiency_load_factor[0] * electrolyser.rated_power
             problem += electrolyser_kW_level_1[i] >= electrolyser_turned_on_level_1[i] * electrolyser.min_power
 
-            problem += electrolyser_kW_level_2[i] <= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor[1] * electrolyser.max_power
-            problem += electrolyser_kW_level_2[i] >= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor[0] * electrolyser.max_power
+            problem += electrolyser_kW_level_2[i] <= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor[1] * electrolyser.rated_power
+            problem += electrolyser_kW_level_2[i] >= electrolyser_turned_on_level_2[i] * electrolyser.efficiency_load_factor[0] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_3[i] <= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor[2] * electrolyser.max_power
-            problem += electrolyser_kW_level_3[i] >= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor[1] * electrolyser.max_power
+            problem += electrolyser_kW_level_3[i] <= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor[2] * electrolyser.rated_power
+            problem += electrolyser_kW_level_3[i] >= electrolyser_turned_on_level_3[i] * electrolyser.efficiency_load_factor[1] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_4[i] <= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor[3] * electrolyser.max_power
-            problem += electrolyser_kW_level_4[i] >= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor[2] * electrolyser.max_power
+            problem += electrolyser_kW_level_4[i] <= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor[3] * electrolyser.rated_power
+            problem += electrolyser_kW_level_4[i] >= electrolyser_turned_on_level_4[i] * electrolyser.efficiency_load_factor[2] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_5[i] <= electrolyser_turned_on_level_5[i] * electrolyser.efficiency_load_factor[4] * electrolyser.max_power
-            problem += electrolyser_kW_level_5[i] >= electrolyser_turned_on_level_5[i] * electrolyser.efficiency_load_factor[3] * electrolyser.max_power
+            problem += electrolyser_kW_level_5[i] <= electrolyser_turned_on_level_5[i] * electrolyser.efficiency_load_factor[4] * electrolyser.rated_power
+            problem += electrolyser_kW_level_5[i] >= electrolyser_turned_on_level_5[i] * electrolyser.efficiency_load_factor[3] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_6[i] <= electrolyser_turned_on_level_6[i] * electrolyser.efficiency_load_factor[5] * electrolyser.max_power
-            problem += electrolyser_kW_level_6[i] >= electrolyser_turned_on_level_6[i] * electrolyser.efficiency_load_factor[4] * electrolyser.max_power
+            problem += electrolyser_kW_level_6[i] <= electrolyser_turned_on_level_6[i] * electrolyser.efficiency_load_factor[5] * electrolyser.rated_power
+            problem += electrolyser_kW_level_6[i] >= electrolyser_turned_on_level_6[i] * electrolyser.efficiency_load_factor[4] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_7[i] <= electrolyser_turned_on_level_7[i] * electrolyser.efficiency_load_factor[6] * electrolyser.max_power
-            problem += electrolyser_kW_level_7[i] >= electrolyser_turned_on_level_7[i] * electrolyser.efficiency_load_factor[5] * electrolyser.max_power
+            problem += electrolyser_kW_level_7[i] <= electrolyser_turned_on_level_7[i] * electrolyser.efficiency_load_factor[6] * electrolyser.rated_power
+            problem += electrolyser_kW_level_7[i] >= electrolyser_turned_on_level_7[i] * electrolyser.efficiency_load_factor[5] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_8[i] <= electrolyser_turned_on_level_8[i] * electrolyser.efficiency_load_factor[7] * electrolyser.max_power
-            problem += electrolyser_kW_level_8[i] >= electrolyser_turned_on_level_8[i] * electrolyser.efficiency_load_factor[6] * electrolyser.max_power
+            problem += electrolyser_kW_level_8[i] <= electrolyser_turned_on_level_8[i] * electrolyser.efficiency_load_factor[7] * electrolyser.rated_power
+            problem += electrolyser_kW_level_8[i] >= electrolyser_turned_on_level_8[i] * electrolyser.efficiency_load_factor[6] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_9[i] <= electrolyser_turned_on_level_9[i] * electrolyser.efficiency_load_factor[8] * electrolyser.max_power
-            problem += electrolyser_kW_level_9[i] >= electrolyser_turned_on_level_9[i] * electrolyser.efficiency_load_factor[7] * electrolyser.max_power
+            problem += electrolyser_kW_level_9[i] <= electrolyser_turned_on_level_9[i] * electrolyser.efficiency_load_factor[8] * electrolyser.rated_power
+            problem += electrolyser_kW_level_9[i] >= electrolyser_turned_on_level_9[i] * electrolyser.efficiency_load_factor[7] * electrolyser.rated_power
 
-            problem += electrolyser_kW_level_10[i] <= electrolyser_turned_on_level_10[i] * electrolyser.efficiency_load_factor[9] * electrolyser.max_power
-            problem += electrolyser_kW_level_10[i] >= electrolyser_turned_on_level_10[i] * electrolyser.efficiency_load_factor[8] * electrolyser.max_power
+            problem += electrolyser_kW_level_10[i] <= electrolyser_turned_on_level_10[i] * electrolyser.max_power
+            problem += electrolyser_kW_level_10[i] >= electrolyser_turned_on_level_10[i] * electrolyser.efficiency_load_factor[8] * electrolyser.rated_power
 
 
             problem += electrolyser_turned_on_level_1[i] + electrolyser_turned_on_level_2[i] + electrolyser_turned_on_level_3[i] + electrolyser_turned_on_level_4[i] + electrolyser_turned_on_level_5[i] + electrolyser_turned_on_level_6[i] + electrolyser_turned_on_level_7[i] + electrolyser_turned_on_level_8[i] + electrolyser_turned_on_level_9[i] + electrolyser_turned_on_level_10[i] <= 1
@@ -393,6 +404,8 @@ def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_loss
         corrected_cost_array = np.zeros(48)
         imports_cost_array = np.zeros(48)
         uos_cost_array = np.zeros(48)
+        supplier_fee_cost_array = np.zeros(48)
+
 
         h2_produced_kWh_result = price_array.copy()
 
@@ -400,16 +413,21 @@ def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_loss
 
             h2_produced_kWh_result[i] = 0.5 * ((electrolyser_kW_level_1.values[i] * adjusted_efficiency_1) + (electrolyser_kW_level_2.values[i] * adjusted_efficiency_2) + (electrolyser_kW_level_3.values[i] * adjusted_efficiency_3) + (electrolyser_kW_level_4.values[i] * adjusted_efficiency_4) + (electrolyser_kW_level_5.values[i] * adjusted_efficiency_5) + (electrolyser_kW_level_6.values[i] * adjusted_efficiency_6) + (electrolyser_kW_level_7.values[i] * adjusted_efficiency_7) + (electrolyser_kW_level_8.values[i] * adjusted_efficiency_8) + (electrolyser_kW_level_9.values[i] * adjusted_efficiency_9) + (electrolyser_kW_level_10.values[i] * adjusted_efficiency_10))
             h2_to_storage[i] = h2_produced_kWh_result[i] - demand_array[i]
-            real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.max_power, electrolyser.efficiency_load_factor, adjusted_full_efficiency_curve)
+            real_efficiency = np.interp(electrolyser_kW_result[i] / electrolyser.rated_power, electrolyser.efficiency_load_factor, adjusted_full_efficiency_curve)
             cost_array[i] = (electrolyser_kW_result[i] / (1000 * line_losses_after_poi)) * price_array[i] * 0.5
             corrected_cost_array[i] = (h2_produced_kWh_result[i] * price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
             imports_cost_array[i] = (h2_produced_kWh_result[i] * import_price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
             uos_cost_array[i] = (h2_produced_kWh_result[i] * uos_price_array[i]) / (1000 * real_efficiency * line_losses_after_poi)
+            supplier_fee_cost_array[i] = (h2_produced_kWh_result[i] * supplier_fee_per_mwh) / (1000 * real_efficiency * line_losses_after_poi)
+
             h2_in_storage_tracker = (h2_in_storage_tracker + h2_to_storage[i]) * tank.remaining_fraction_after_half_hour
             h2_in_storage[i] = h2_in_storage_tracker
 
+        mean_production_price = np.mean(import_price_array[0:48][h2_produced_kWh_result[0:48] > 0])
+
         day_results_df['datetime'] = date_array[0:48]
-        day_results_df['price'] = price_array[0:48]
+        day_results_df['import_price'] = import_price_array[0:48]
+        day_results_df['uos_price'] = uos_price_array[0:48]
         day_results_df['h2_demand_kWh'] = demand_array[0:48]
         day_results_df['electrolyser_kW'] = electrolyser_kW_result[0:48]
         day_results_df['electrolyser_kW_1'] = electrolyser_kW_level_1.values[0:48]
@@ -429,8 +447,10 @@ def LPcontrol10(data_day, day_results_df, day_start_h2_in_storage_kwh, line_loss
         day_results_df['h2_cost_total'] = corrected_cost_array[0:48]
         day_results_df['h2_cost_imports'] = imports_cost_array[0:48]
         day_results_df['h2_cost_uos'] = uos_cost_array[0:48]
+        day_results_df['h2_cost_supplier_fee'] = supplier_fee_cost_array[0:48]
 
-    return(day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag)
+
+    return(day_results_df, solver_time, end_of_day_storage_target, end_of_day_storage_increase_per_day, failed_combination_flag, mean_production_price)
 
 
 def NoStorageDay(date_array, price_array, h2_price_array, demand_array, day_results_df, day_start_h2_in_storage_kwh):

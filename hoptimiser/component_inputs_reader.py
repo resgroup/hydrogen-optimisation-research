@@ -47,6 +47,8 @@ def populate_combinations(tank_df, electrolyser_df, input_file_name):
         for n_electrolysers in range(max(1, electrolyser_df.loc[i, 'Minimum Selectable']), electrolyser_df.loc[i, 'Maximum Selectable']+1):
             for j in range(0, len(tank_df)):
                 for n_tanks in range(max(1, tank_df.loc[j, 'Minimum Selectable']), tank_df.loc[j, 'Maximum Selectable'] + 1):
+                    #uncomment next line to make a combination with no stack replacement
+                    #combinations.append([i, n_electrolysers, j, n_tanks])
                     for s in stack_year_options['ReplacementYearOptions']:
                         combinations.append([i, n_electrolysers, j, n_tanks])
                         s = str(s).split(',')

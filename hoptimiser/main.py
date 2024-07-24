@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from component_inputs_reader import read_component_data, populate_combinations
-from variable_price_azure import Analysis
+from variable_price_orchestrator import Analysis
 
 if __name__ == '__main__':
 
