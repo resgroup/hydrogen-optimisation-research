@@ -106,10 +106,9 @@ batch_submission/
 .idea/
 *.txt
 *.csv
-*.json
+# *.json
 *.png
 *.ipynb
-*config.py
 
 output/
 data/
