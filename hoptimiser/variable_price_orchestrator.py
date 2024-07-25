@@ -6,12 +6,19 @@ import sys
 import json
 from scipy.stats import percentileofscore
 
-from control_algorithm import LPcontrol5, LPcontrol10
-from component_inputs_reader import read_component_data, populate_combinations
-from component_classes import CombinedElectrolyser, CombinedTank
-from read_time_series_data import read_ts_data
+try:
+    from hoptimiser.control_algorithm import LPcontrol5, LPcontrol10
+    from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
+    from hoptimiser.component_classes import CombinedElectrolyser, CombinedTank
+    from hoptimiser.read_time_series_data import read_ts_data
+    from hoptimiser.config import PROJECT_ROOT_DIR
+except:
+    from control_algorithm import LPcontrol5, LPcontrol10
+    from component_inputs_reader import read_component_data, populate_combinations
+    from component_classes import CombinedElectrolyser, CombinedTank
+    from read_time_series_data import read_ts_data
+    from config import PROJECT_ROOT_DIR
 
-from config import PROJECT_ROOT_DIR
 
 class Analysis():
 

@@ -6,7 +6,10 @@ from batch_submission.blob import upload_file_to_container
 from batch_submission.batch_submission import BatchSubmission
 from batch_submission.monitor import Monitor
 
-from component_inputs_reader import read_component_data, populate_combinations
+from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
+
+from hoptimiser.config import PROJECT_ROOT_DIR
+
 
 class HoptimiserBatchRunner:
 
@@ -25,7 +28,7 @@ class HoptimiserBatchRunner:
         self.task_list: list = []
 
     def _zip_up_core_scripts(self) -> None:
-        with tarfile.open('../examples/azure_batch/core.tar.gz', 'w:gz') as core_tar:
+        with tarfile.open('examples/azure_batch/core.tar.gz', 'w:gz') as core_tar:
             core_tar.add('batch_environment.yml',
                          os.path.basename('batch_environment.yml'))
 
@@ -66,7 +69,7 @@ class HoptimiserBatchRunner:
 
                     'source activate hoptimiser',
 
-                    f'python -m hoptimiser.variable_price_azure {str_c} True &> {output_dir}/log.txt'
+                    f'python -m hoptimiser.variable_price_orchestrator {str_c} True &> {output_dir}/log.txt'
                 ],
                 "output_file_pattern_list": [
                     '*/log.txt',
@@ -91,7 +94,7 @@ class HoptimiserBatchRunner:
         self._zip_up_core_scripts()
         self.batch_job.create_containers()
         self.batch_job.upload_files(
-            setup_files_path='../examples/azure_batch/core.tar.gz',
+            setup_files_path='examples/azure_batch/core.tar.gz',
             tasks_file_paths=['task.tar.gz']
         )
         self._build_task_list()
@@ -119,13 +122,13 @@ class HoptimiserBatchRunner:
 
 if __name__ == '__main__':
 
-    analysis_name = 'test-analysis-full-years'
+    analysis_name = 'Analysis'
 
     maximum_nodes = 350
+    input_file_name_components = 'component_inputs.xlsx'
 
-    input_file_name_components = r'/inputs/component_inputs.xlsx'
-    tank_df, electrolyser_df, data_years = read_component_data(input_file_name_components)
-    combinations = populate_combinations(tank_df, electrolyser_df, input_file_name_components)
+    tank_df, electrolyser_df, data_years = read_component_data(os.path.join(PROJECT_ROOT_DIR, 'inputs', input_file_name_components))
+    combinations = populate_combinations(tank_df, electrolyser_df, os.path.join(PROJECT_ROOT_DIR, 'inputs', input_file_name_components))
 
     batch_runner = HoptimiserBatchRunner(
         analysis_name=analysis_name,
@@ -149,7 +152,10 @@ if __name__ == '__main__':
         tank_df=tank_df
     )
 
-    results = pd.read_csv('../examples/azure_batch/batch_results.csv')
+    #delete container and jobs:
+    batch_runner.batch_job.cleanup()
+
+    results = pd.read_csv('batch_results_temp.csv')
 
     results['electrolyser_id'] = None
     results['number_of_electrolysers'] = None
@@ -176,5 +182,6 @@ if __name__ == '__main__':
         if len(combination) > 4:
             results.loc[i, 'stack_replacement_years'] = str(combination[4:])
 
+    results.to_csv('batch_results_temp.csv')
     results.to_csv('batch_results.csv')
 
