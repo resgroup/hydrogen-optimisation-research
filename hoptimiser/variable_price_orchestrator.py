@@ -6,12 +6,19 @@ import sys
 import json
 from scipy.stats import percentileofscore
 
-from control_algorithm import LPcontrol5, LPcontrol10
-from component_inputs_reader import read_component_data, populate_combinations
-from component_classes import CombinedElectrolyser, CombinedTank
-from read_time_series_data import read_ts_data
+try:
+    from hoptimiser.control_algorithm import LPcontrol5, LPcontrol10
+    from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
+    from hoptimiser.component_classes import CombinedElectrolyser, CombinedTank
+    from hoptimiser.read_time_series_data import read_ts_data
+    from hoptimiser.config import PROJECT_ROOT_DIR
+except:
+    from control_algorithm import LPcontrol5, LPcontrol10
+    from component_inputs_reader import read_component_data, populate_combinations
+    from component_classes import CombinedElectrolyser, CombinedTank
+    from read_time_series_data import read_ts_data
+    from config import PROJECT_ROOT_DIR
 
-from config import PROJECT_ROOT_DIR
 
 class Analysis():
 
@@ -47,9 +54,6 @@ class Analysis():
         tank_df, electrolyser_df, data_years = read_component_data(input_file_name_components)
 
         start_time = datetime.datetime.now()
-
-        #Todo: the code assumes that we pay per MWh at the POI, and then counts line losses from there to the electrolyser.
-        # Need to confirm that this is right
 
         economic_inputs = pd.read_excel(input_file_name_components, sheet_name='Economic Inputs')
         economic_inputs.set_index('Parameter', inplace=True)
@@ -141,7 +145,7 @@ class Analysis():
             demand_year = unique_years.loc[analysis_year, 'DemandYear']
             efficiency_adjustment = unique_years.loc[analysis_year, 'minimum_relative_efficiency']
             data['demand'] = data[demand_year]
-            data['import_price'] = data[str(price_year)] * combined_elec_price_inflation# * line_efficiency_after_poi #todo line losses required to match HYDRA appraoch
+            data['import_price'] = data[str(price_year)] * combined_elec_price_inflation
             data['combined_price'] = data['import_price'] + data['uos_charge']
 
             electrolyser.max_power = min(grid_import_max_power * 1000 * line_efficiency_after_poi, electrolyser.rated_power)
@@ -203,7 +207,15 @@ class Analysis():
                 end_of_day_storage_target = tank.min_storage_kwh
                 end_of_day_storage_increase_per_day = 0
 
+                month = 1
+
+                print('\nNow optimising the control one day at a time for 12 months... ')
+
                 for day in data['Day'].unique()[0:len(data['Day'].unique())]:
+
+                    if not day.month == month:
+                        print('Month '+str(day.month - 1)+' complete...')
+                        month = day.month
 
                     if not failed_combination_flag:
 
@@ -251,8 +263,8 @@ class Analysis():
                             end_of_day_storage_target += end_of_day_storage_increase_per_day
 
                 if not failed_combination_flag:
-
-                    print('Days curtailed due to solver time limit = ',days_with_solver_time_curtailed)
+                    print('Month 12 complete!')
+                    print('\nDays curtailed due to solver time limit = ', days_with_solver_time_curtailed)
 
                     weighted_mean_price_when_producing = h2_price_sum_product / total_h2_produced
 
@@ -340,18 +352,12 @@ class Analysis():
         else:
             lcoh2 = -99.99
 
-        # with open(os.path.join(PROJECT_ROOT_DIR, 'results', 'lcoh2_result.json'), 'w', encoding='utf-8') as f:
-        #     json.dump({
-        #         'combination': self.input_combination,
-        #         'lcoh2': lcoh2,
-        #         'total_time_taken': str(time_taken),
-        #     }, f, indent=2)
-
         with open(os.path.join(output_dir_high_level, output_dir, 'lcoh2_result.json'), 'w', encoding='utf-8') as f:
             json.dump({
                 'combination': self.input_combination,
                 'lcoh2': lcoh2,
                 'total_time_taken': str(time_taken),
+                'days_curtailed_by_time_limit': str(days_with_solver_time_curtailed)
             }, f, indent=2)
 
         return lcoh2
