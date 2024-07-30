@@ -97,8 +97,9 @@ ENV/
 # mkdocs documentation
 /site
 
-# Azure Batch
-batch_submission/
+#data
+inputs/
+examples/
 
 # mypy
 .mypy_cache/
@@ -110,6 +111,3 @@ batch_submission/
 *.png
 *.ipynb
 
-output/
-data/
-input/
