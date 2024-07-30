@@ -122,7 +122,9 @@ class HoptimiserBatchRunner:
 
 if __name__ == '__main__':
 
-    analysis_name = 'Analysis'
+    analysis_name = 'batch-analysis'
+
+    analysis_name = analysis_name.lower()
 
     maximum_nodes = 350
     input_file_name_components = 'component_inputs.xlsx'

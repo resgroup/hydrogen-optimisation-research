@@ -1,7 +1,8 @@
-from variable_price_orchestrator import Analysis
-from component_inputs_reader import read_component_data, populate_combinations
+from hoptimiser.variable_price_orchestrator import Analysis
+from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
 import os
-from config import PROJECT_ROOT_DIR
+from hoptimiser.config import PROJECT_ROOT_DIR
+
 
 if __name__ == "__main__":
 
