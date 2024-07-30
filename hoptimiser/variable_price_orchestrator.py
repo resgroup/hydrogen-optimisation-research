@@ -139,6 +139,8 @@ class Analysis():
             if not os.path.exists(dir_to_create):
                 os.mkdir(dir_to_create)
 
+        total_curtailed_days = 0
+
         for analysis_year in range(0, len(unique_years)):
 
             price_year = int(unique_years.loc[analysis_year, 'PriceYear'])
@@ -265,7 +267,7 @@ class Analysis():
                 if not failed_combination_flag:
                     print('Month 12 complete!')
                     print('\nDays curtailed due to solver time limit = ', days_with_solver_time_curtailed)
-
+                    total_curtailed_days += days_with_solver_time_curtailed
                     weighted_mean_price_when_producing = h2_price_sum_product / total_h2_produced
 
                     production_price_percentile = percentileofscore(data['import_price'], weighted_mean_price_when_producing)
@@ -304,6 +306,7 @@ class Analysis():
         time_taken = end_time - start_time
         print('Total time taken = ', time_taken)
 
+        average_days_curtailed_per_run = total_curtailed_days / len(unique_years)
 
         if not failed_combination_flag:
 
@@ -357,7 +360,7 @@ class Analysis():
                 'combination': self.input_combination,
                 'lcoh2': lcoh2,
                 'total_time_taken': str(time_taken),
-                'days_curtailed_by_time_limit': str(days_with_solver_time_curtailed)
+                'average_days_curtailed_by_time_limit': str(average_days_curtailed_per_run)
             }, f, indent=2)
 
         return lcoh2

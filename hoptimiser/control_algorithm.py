@@ -158,6 +158,7 @@ def LPcontrol5(data_day, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_
     end_solver_time = datetime.datetime.now()
 
     solver_time = end_solver_time - start_solver_time
+    day_results_df = pd.DataFrame()
 
     if not failed_combination_flag:
 
@@ -196,7 +197,6 @@ def LPcontrol5(data_day, day_start_h2_in_storage_kwh, line_losses_after_poi, lp_
 
         mean_production_price = np.mean(import_price_array[0:48][h2_produced_kWh_result[0:48] > 0])
 
-        day_results_df = pd.DataFrame()
         day_results_df['datetime'] = date_array[0:48]
         day_results_df['import_price'] = import_price_array[0:48]
         day_results_df['uos_price'] = uos_price_array[0:48]
@@ -381,6 +381,7 @@ def LPcontrol10(data_day, day_start_h2_in_storage_kwh, line_losses_after_poi, lp
     end_solver_time = datetime.datetime.now()
 
     solver_time = end_solver_time - start_solver_time
+    day_results_df = pd.DataFrame()
 
     if not failed_combination_flag:
 
@@ -425,7 +426,6 @@ def LPcontrol10(data_day, day_start_h2_in_storage_kwh, line_losses_after_poi, lp
 
         mean_production_price = np.mean(import_price_array[0:48][h2_produced_kWh_result[0:48] > 0])
 
-        day_results_df = pd.DataFrame()
         day_results_df['datetime'] = date_array[0:48]
         day_results_df['import_price'] = import_price_array[0:48]
         day_results_df['uos_price'] = uos_price_array[0:48]
