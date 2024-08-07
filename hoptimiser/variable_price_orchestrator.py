@@ -136,6 +136,8 @@ class Analysis():
         dir_to_create = os.path.join(output_dir_high_level,output_dir)
 
         if not self.run_in_azure:
+            if not os.path.exists(output_dir_high_level):
+                os.mkdir(output_dir_high_level)
             if not os.path.exists(dir_to_create):
                 os.mkdir(dir_to_create)
 
