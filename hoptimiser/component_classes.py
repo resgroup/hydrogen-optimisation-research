@@ -2,7 +2,7 @@ import pandas as pd
 
 
 class CombinedElectrolyser():
-    def __init__(self, selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, capital_cost_baseline_year, n_years, electrolyser_min_capacity, reduce_efficiencies, optimise_efficiencies):
+    def __init__(self, selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, component_delivery_year, n_years, electrolyser_min_capacity, reduce_efficiencies, optimise_efficiencies):
 
         self.rated_power = selected_electrolyser['Capacity (MW)'] * 1000 * n_electrolysers
         self.min_power = max(selected_electrolyser['Capacity (MW)'] * 1000 * electrolyser_min_capacity, 1E-4)
@@ -43,13 +43,10 @@ class CombinedElectrolyser():
             self.efficiency_learning_curve_year = self.efficiency_learning_curve_year[years_to_remove:]
             self.efficiency_learning_curve = self.efficiency_learning_curve[years_to_remove:]
 
-        self.stack_replacement_capex_curve[0] = 0.0 #todo no improvement in first year could move this to after we have added early non-operational years
-        self.efficiency_learning_curve[0] = 0.0 #todo no improvement in first year could move this to after we have added early non-operational years
-
-        if capital_cost_baseline_year > first_operational_year:
+        if component_delivery_year > first_operational_year:
             raise Exception('First operational year is earlier than capital cost data year, code cannot run!')
-        elif capital_cost_baseline_year < first_operational_year: #we must add extra years at the start before operation
-            years_to_add = first_operational_year - capital_cost_baseline_year
+        elif component_delivery_year < first_operational_year: #we must add extra years at the start before operation
+            years_to_add = first_operational_year - component_delivery_year
             for years in range(1, years_to_add + 1):
                 year_to_add = first_operational_year - years
                 self.stack_replacement_capex_curve_year = [year_to_add] + self.stack_replacement_capex_curve_year

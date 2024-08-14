@@ -1,10 +1,13 @@
 import os
 import tarfile
 import pandas as pd
+import time
 
 from batch_submission.blob import upload_file_to_container
 from batch_submission.batch_submission import BatchSubmission
 from batch_submission.monitor import Monitor
+from batch_submission.pool import create_pool
+from batch_submission import config
 
 from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
 
@@ -141,7 +144,24 @@ if __name__ == '__main__':
         batch_job=batch_runner.batch_job,
     )
     print('Number of combinations = ', len(combinations))
+
     monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
+
+    # except:
+    #     create_pool(
+    #         batch_service_client=batch_runner.batch_job.batch_service_client,
+    #         pool_id=config.POOL_ID,
+    #         input_files=[],
+    #         commands= [
+    #     'mkdir -p ./src',
+    #     'tar xzf core.tar.gz -C .',
+    #     'conda env create -f batch_environment.yml',
+    #     ]
+    #     )
+    #
+    #     time.sleep(300)
+    #
+    #     monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
 
     batch_runner.run()
 

@@ -61,7 +61,7 @@ class Analysis():
         technical_inputs = pd.read_excel(input_file_name_components, sheet_name='Technical Inputs')
         technical_inputs.set_index('Parameter', inplace=True)
 
-        capital_cost_baseline_year = economic_inputs['Value']['Capital Cost Baseline Year']
+        component_delivery_year = economic_inputs['Value']['Component Delivery Year']
         capital_cost_price_year = economic_inputs['Value']['Capital Cost Price Year']
         electricity_price_year = economic_inputs['Value']['Electricity Price Baseline Year']
         if capital_cost_price_year == electricity_price_year:
@@ -69,11 +69,9 @@ class Analysis():
         else:
             combined_elec_price_inflation = economic_inputs['Value']['Combined Electricity Price Inflation'] # to inflate elec price input data to match price year of capital costs
 
-        #todo consider adding forward price annual averages and scaling price time series to match these
-
         grid_import_max_power = technical_inputs['Value']['Max Grid Import Power MW']
         power_factor = technical_inputs['Value']['Power Factor']
-        line_efficiency_after_poi = technical_inputs['Value']['Line Efficiency after POI'] #todo check this
+        line_efficiency_after_poi = technical_inputs['Value']['Line Efficiency after POI']
         start_half_full = bool(technical_inputs['Value']['Start With Tanks Half Full'])
         tank_min_storage_limit = technical_inputs['Value']['Tank Min Storage Level Allowed']
         h2_heating_value = economic_inputs['Value']['Heating Value'].lower()
@@ -92,7 +90,6 @@ class Analysis():
 
         daily_fixed_charge_total = (daily_capacity_charge * grid_import_max_power / power_factor) + daily_fixed_charge + daily_TNUOS_charge
         annual_fixed_charge = daily_fixed_charge_total * 365.25
-        #todo annual_additonal_costs total so far only includes FixedNonComm from results sheet. We may need to include ImportNonComm (time of use charges) and OffsiteNonComm costs
         annual_admin_costs = annual_fixed_charge * sleeving_fee/100
 
         if h2_heating_value == 'lower':
@@ -117,7 +114,7 @@ class Analysis():
         print(selected_tank)
         stack_replacement_years = self.input_combination[4:]
 
-        electrolyser = CombinedElectrolyser(selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, capital_cost_baseline_year, n_years, electrolyser_min_capacity=electrolyser_min_capacity, reduce_efficiencies=reduce_efficiencies, optimise_efficiencies=False)
+        electrolyser = CombinedElectrolyser(selected_electrolyser, n_electrolysers, stack_replacement_years, first_operational_year, component_delivery_year, n_years, electrolyser_min_capacity=electrolyser_min_capacity, reduce_efficiencies=reduce_efficiencies, optimise_efficiencies=False)
         tank = CombinedTank(selected_tank, n_tanks, min_storage_kwh = tank_min_storage_limit, start_half_full=start_half_full)
 
         electrolyser.combined_stack_and_efficiencies_df = electrolyser.combined_stack_and_efficiencies_df.merge(data_years, how='left')
