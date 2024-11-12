@@ -3,11 +3,16 @@ import tarfile
 import pandas as pd
 import time
 
+from msrestazure.azure_operation import succeeded
+
 from batch_submission.blob import upload_file_to_container
 from batch_submission.batch_submission import BatchSubmission
 from batch_submission.monitor import Monitor
 from batch_submission.pool import create_pool
 from batch_submission import config
+from batch_submission.config import POOL_ID
+from batch_submission.utils import chunk
+
 
 from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
 
@@ -29,6 +34,7 @@ class HoptimiserBatchRunner:
         self._max_tasks_per_job: int = 100
         self.batch_job = BatchSubmission()
         self.task_list: list = []
+        self.node_count = len(combinations)
 
     def _zip_up_core_scripts(self) -> None:
         with tarfile.open('examples/azure_batch/core.tar.gz', 'w:gz') as core_tar:
@@ -94,33 +100,56 @@ class HoptimiserBatchRunner:
             pass
 
     def run(self) -> None:
+
         self._zip_up_core_scripts()
         self.batch_job.create_containers()
         self.batch_job.upload_files(
             setup_files_path='examples/azure_batch/core.tar.gz',
             tasks_file_paths=['task.tar.gz']
         )
+
+        #Create a new pool once the old one has finished being deleted:
+        count = 0
+        success = False
+        while success == False and count < 60:
+            try:
+                self.batch_job.create_pool(pool_commands=self.POOL_COMMANDS, node_count=self.node_count)
+                success = True
+
+            except:
+                print('Waiting for existing pool to delete. Trying again in 10 seconds, please wait...')
+                time.sleep(10)
+                count += 1
+
+        #create the names of the jobs so that we can delete any jobs with the same name before starting new ones:
         self._build_task_list()
 
-        remaining_tasks = self.batch_job.run(
-            pool_commands=self.POOL_COMMANDS,
-            task_list=self.task_list,
-            wait_for_tasks=False,
-            max_tasks_per_job=self._max_tasks_per_job,
-        )
-        # remaining_tasks = [
-        #     {key: val} for key, val in remaining_tasks[0].items() if key not in [
-        #         'resource_files',
-        #         'cmd',
-        #         'output_file_pattern_list',
-        #         'output_container_sas_url',
-        #     ]
-        # ]
-        # if remaining_tasks:
-        #     with open('remaining_tasks.json', 'w', encoding='utf-8') as fname:
-        #         json.dump(remaining_tasks, fname, indent=2)
+        chunked = chunk(it=self.task_list, size=100)
+        for chunk_idx, task_list_chunk in enumerate(chunked):
+            job_id = f'{config.JOB_ID}-{chunk_idx}'
+            self.batch_job.job_ids.append(job_id)
+        print(self.batch_job.job_ids)
 
-        #self._cleanup()
+        #delete all jobs with the above job_ids and tasks:
+        self.batch_job.cleanup(delete_container=False, delete_pool=False)
+
+        success = False
+        count = 0
+
+        while success == False and count < 60:
+            try:
+                remaining_tasks = self.batch_job.run(
+                    pool_commands=self.POOL_COMMANDS,
+                    task_list=self.task_list,
+                    wait_for_tasks=False,
+                    max_tasks_per_job=self._max_tasks_per_job,
+            )
+                success = True
+
+            except:
+                print('Error in running batch jobs. Trying again in 10 seconds, please wait...')
+                time.sleep(10)
+                count += 1
 
 
 if __name__ == '__main__':
@@ -139,32 +168,28 @@ if __name__ == '__main__':
         analysis_name=analysis_name,
         combinations=combinations
     )
+    #delete existing pool:
+    batch_runner.batch_job.cleanup(delete_container=False, delete_jobs=False)
 
     monitor = Monitor(
         batch_job=batch_runner.batch_job,
     )
     print('Number of combinations = ', len(combinations))
 
-    monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
-
-    # except:
-    #     create_pool(
-    #         batch_service_client=batch_runner.batch_job.batch_service_client,
-    #         pool_id=config.POOL_ID,
-    #         input_files=[],
-    #         commands= [
-    #     'mkdir -p ./src',
-    #     'tar xzf core.tar.gz -C .',
-    #     'conda env create -f batch_environment.yml',
-    #     ]
-    #     )
-    #
-    #     time.sleep(300)
-    #
-    #     monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
-
+    #the run command includes creating the new pool, deleting old jobs and creating new ones:
     batch_runner.run()
 
+    #check that Pool has finished being created by attempting a resize:
+    pool_exists =  False
+    while pool_exists == False:
+        try:
+            monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
+            pool_exists = True
+        except:
+            print('Pool still being created. Trying again in 10 seconds, please wait...')
+            time.sleep(10)
+
+    #once pool has been created, we can start the monitor to check for job completion:
     monitor.run(
         print_output=True,
         sleep_time_s=30,
@@ -174,7 +199,7 @@ if __name__ == '__main__':
         tank_df=tank_df
     )
 
-    #delete container and jobs:
+    #delete container, jobs and pool:
     batch_runner.batch_job.cleanup()
 
     results = pd.read_csv('batch_results_temp.csv')

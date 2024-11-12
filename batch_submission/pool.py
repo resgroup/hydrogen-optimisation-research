@@ -9,7 +9,8 @@ class VmSize:
     STANDARD_DS1_v2 = "STANDARD_DS1_V2"
 
 
-def create_pool(batch_service_client: BatchServiceClient, pool_id: str, input_files: list, commands: list = []) -> None:
+def create_pool(batch_service_client: BatchServiceClient, pool_id: str, input_files: list, commands: list = [],
+                node_count: int = 1) -> None:
     """
     Creates a pool of compute nodes with the specified OS settings.
 
@@ -93,7 +94,7 @@ def create_pool(batch_service_client: BatchServiceClient, pool_id: str, input_fi
             vm_size=config.POOL_VM_SIZE,
             virtual_machine_configuration=virtual_machine_config,
             target_dedicated_nodes=config.DEDICATED_POOL_NODE_COUNT,
-            target_low_priority_nodes=config.LOW_PRIORITY_POOL_NODE_COUNT,
+            target_low_priority_nodes=node_count,
             start_task=start_task,
         )
 
