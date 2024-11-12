@@ -108,18 +108,9 @@ class HoptimiserBatchRunner:
             tasks_file_paths=['task.tar.gz']
         )
 
-        #Create a new pool once the old one has finished being deleted:
-        count = 0
-        success = False
-        while success == False and count < 60:
-            try:
-                self.batch_job.create_pool(pool_commands=self.POOL_COMMANDS, node_count=self.node_count)
-                success = True
-
-            except:
-                print('Waiting for existing pool to delete. Trying again in 10 seconds, please wait...')
-                time.sleep(10)
-                count += 1
+        #Create a new pool:
+        self.batch_job.create_pool(pool_commands=self.POOL_COMMANDS, node_count=self.node_count)
+        print('New Pool created')
 
         #create the names of the jobs so that we can delete any jobs with the same name before starting new ones:
         self._build_task_list()
@@ -168,8 +159,54 @@ if __name__ == '__main__':
         analysis_name=analysis_name,
         combinations=combinations
     )
-    #delete existing pool:
-    batch_runner.batch_job.cleanup(delete_container=False, delete_jobs=False)
+
+    #check if pool exists:
+    try:
+        pool = batch_runner.batch_job.batch_service_client.pool.get(POOL_ID)
+        pool_exists = True
+        if pool.allocation_state == 'steady':
+            pool_steady = True
+            print('Pool exists and is steady, will be deleted and recreated...')
+        else:
+            pool_steady = False
+    except:
+        pool_exists = False
+
+    if pool_exists:
+        # wait for pool to become steady or for deletion from previous run to complete:
+        steady_count = 0
+        while not pool_steady and steady_count < 30:
+            print('Pool is still in flux from a previous run, waiting for it to stabilise...')
+            time.sleep(20)
+            steady_count += 1
+            try:
+                pool = batch_runner.batch_job.batch_service_client.pool.get(POOL_ID)
+                pool_exists = True
+                if pool.allocation_state == 'steady':
+                    pool_steady = True
+            except:
+                pool_exists = False
+                pool_steady = True
+
+        if pool_steady:
+            # delete existing pool:
+            print('Pool is steady or does not exist. Deleting pool if it still exists...')
+            batch_runner.batch_job.cleanup(delete_container=False, delete_jobs=False)
+            pool_still_exists = True
+            while pool_still_exists:
+                try:
+                    pool = batch_runner.batch_job.batch_service_client.pool.get(POOL_ID)
+                    print('Waiting for pool to delete...')
+                    time.sleep(20)
+                except:
+                    pool_still_exists = False
+                    print('Pool deleted. Starting new pool...')
+
+        else:
+            print('Pool did not stabilise after 10 minutes. Exiting...')
+            exit()
+    else:
+        print('No existing pool found, new pool will be created...')
 
     monitor = Monitor(
         batch_job=batch_runner.batch_job,
@@ -179,15 +216,7 @@ if __name__ == '__main__':
     #the run command includes creating the new pool, deleting old jobs and creating new ones:
     batch_runner.run()
 
-    #check that Pool has finished being created by attempting a resize:
-    pool_exists =  False
-    while pool_exists == False:
-        try:
-            monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
-            pool_exists = True
-        except:
-            print('Pool still being created. Trying again in 10 seconds, please wait...')
-            time.sleep(10)
+    #monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
 
     #once pool has been created, we can start the monitor to check for job completion:
     monitor.run(
