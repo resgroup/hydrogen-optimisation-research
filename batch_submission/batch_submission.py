@@ -18,6 +18,7 @@ import dotenv
 
 dotenv.load_dotenv()
 
+
 class BatchSubmission:
     def __init__(
             self,
@@ -105,6 +106,17 @@ class BatchSubmission:
                 file_path=tasks_file_path,
             ) for tasks_file_path in tasks_file_paths]
 
+    def create_pool(self,
+                    pool_commands: list,
+                    node_count: int):
+        create_pool(
+            batch_service_client=self.batch_service_client,
+            pool_id=config.POOL_ID,
+            input_files=self.setup_files,
+            commands=pool_commands,
+            node_count=node_count
+        )
+
     def run(
             self,
             pool_commands: list,
@@ -112,12 +124,6 @@ class BatchSubmission:
             wait_for_tasks: bool = True,
             max_tasks_per_job: int = 100) -> list:
         try:
-            create_pool(
-                batch_service_client=self.batch_service_client,
-                pool_id=config.POOL_ID,
-                input_files=self.setup_files,
-                commands=pool_commands,
-            )
             if len(task_list) > max_tasks_per_job:
                 remaining_tasks = self._run_many_jobs(
                     task_list=task_list,
@@ -126,7 +132,7 @@ class BatchSubmission:
             else:
                 remaining_tasks = self._run_single_job(
                     task_list=task_list,
-                    job_id=config.JOB_ID,
+                    job_id=f'{config.JOB_ID}-0',
                     wait_for_tasks=wait_for_tasks,
                 )
             return remaining_tasks
@@ -178,20 +184,32 @@ class BatchSubmission:
         remaining_tasks = [item for sublist in [x for x in chunked] for item in sublist]
         return remaining_tasks
 
-    def cleanup(self):
+    def cleanup(self, delete_container: bool = True, delete_jobs: bool = True, delete_pool: bool = True):
         # Delete input container in storage
 
-        print(f'Deleting container [{self.input_container_name}]')
-        self.blob_service_client.delete_container(
-            container=self.input_container_name,
-        )
+        if delete_container:
+            try:
+                self.blob_service_client.delete_container(
+                    container=self.input_container_name,
+                )
+                print(f'Deleting container [{self.input_container_name}]')
+            except:
+                print('Failed to delete container!')
 
-        for job_id in self.job_ids:
-            print(f'Deleting Job ID: [{job_id}]')
-            self.batch_service_client.job.delete(
-                job_id=job_id
-            )
 
-        #if query_yes_no('Delete pool?') == 'yes':
-        #    self.batch_service_client.pool.delete(config.POOL_ID)
+        if delete_jobs:
+            try:
+                for job_id in self.job_ids:
+                    self.batch_service_client.job.delete(
+                        job_id=job_id
+                    )
+                    print(f'Deleting Job ID: [{job_id}]')
+            except:
+                print('Failed to delete jobs!')
 
+        if delete_pool:
+            try:
+                self.batch_service_client.pool.delete(config.POOL_ID)
+                print(f'Deleting Pool ID: [{config.POOL_ID}]')
+            except:
+                print('Failed to delete pool!')
