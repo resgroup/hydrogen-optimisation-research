@@ -13,14 +13,12 @@ from batch_submission import config
 from batch_submission.config import POOL_ID
 from batch_submission.utils import chunk
 
-
 from hoptimiser.component_inputs_reader import read_component_data, populate_combinations
 
 from hoptimiser.config import PROJECT_ROOT_DIR
 
 
 class HoptimiserBatchRunner:
-
     POOL_COMMANDS: list = [
         'mkdir -p ./src',
         'tar xzf core.tar.gz -C .',
@@ -65,9 +63,8 @@ class HoptimiserBatchRunner:
         )
 
         for c in self.combinations:
-
             str_c = str(c).replace(" ", "")
-            output_dir = f'{str(c)[1:-1].replace(",","_").replace(" ", "")}'
+            output_dir = f'{str(c)[1:-1].replace(",", "_").replace(" ", "")}'
             task = {
                 "cmd": [
                     'tar xzf task.tar.gz -C .',
@@ -108,11 +105,11 @@ class HoptimiserBatchRunner:
             tasks_file_paths=['task.tar.gz']
         )
 
-        #Create a new pool:
+        # Create a new pool:
         self.batch_job.create_pool(pool_commands=self.POOL_COMMANDS, node_count=self.node_count)
         print('New Pool created')
 
-        #create the names of the jobs so that we can delete any jobs with the same name before starting new ones:
+        # create the names of the jobs so that we can delete any jobs with the same name before starting new ones:
         self._build_task_list()
 
         chunked = chunk(it=self.task_list, size=100)
@@ -121,7 +118,7 @@ class HoptimiserBatchRunner:
             self.batch_job.job_ids.append(job_id)
         print(self.batch_job.job_ids)
 
-        #delete all jobs with the above job_ids and tasks:
+        # delete all jobs with the above job_ids and tasks:
         self.batch_job.cleanup(delete_container=False, delete_pool=False)
 
         success = False
@@ -134,7 +131,7 @@ class HoptimiserBatchRunner:
                     task_list=self.task_list,
                     wait_for_tasks=False,
                     max_tasks_per_job=self._max_tasks_per_job,
-            )
+                )
                 success = True
 
             except:
@@ -152,15 +149,31 @@ if __name__ == '__main__':
     maximum_nodes = 350
     input_file_name_components = 'component_inputs.xlsx'
 
-    tank_df, electrolyser_df, data_years = read_component_data(os.path.join(PROJECT_ROOT_DIR, 'inputs', input_file_name_components))
-    combinations = populate_combinations(tank_df, electrolyser_df, os.path.join(PROJECT_ROOT_DIR, 'inputs', input_file_name_components))
+    tank_df, electrolyser_df, data_years = read_component_data(
+        os.path.join(PROJECT_ROOT_DIR, 'inputs', input_file_name_components))
+    combinations = populate_combinations(tank_df, electrolyser_df,
+                                         os.path.join(PROJECT_ROOT_DIR, 'inputs', input_file_name_components))
+
+    input_file_name_components = os.path.join(
+        PROJECT_ROOT_DIR, 'inputs',
+        'component_inputs.xlsx',
+    )
+
+    technical_inputs = pd.read_excel(input_file_name_components, sheet_name='Technical Inputs')
+    technical_inputs.set_index('Parameter', inplace=True)
+
+    n_best_results_download = min(int(technical_inputs['Value']['Number of Batch Setups to Download']),
+                                  len(combinations))
+
+    print('Number of combinations = ', len(combinations))
+    print('The following number of best results will be downloaded in full:', n_best_results_download)
 
     batch_runner = HoptimiserBatchRunner(
         analysis_name=analysis_name,
         combinations=combinations
     )
 
-    #check if pool exists:
+    # check if pool exists:
     try:
         pool = batch_runner.batch_job.batch_service_client.pool.get(POOL_ID)
         pool_exists = True
@@ -211,27 +224,25 @@ if __name__ == '__main__':
     monitor = Monitor(
         batch_job=batch_runner.batch_job,
     )
-    print('Number of combinations = ', len(combinations))
 
-    #the run command includes creating the new pool, deleting old jobs and creating new ones:
+    # the run command includes creating the new pool, deleting old jobs and creating new ones:
     batch_runner.run()
 
-    #monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
+    # monitor._resize_pool(target_low_priority_nodes=int(min(maximum_nodes, len(combinations))), target_dedicated_nodes=int(0))
 
-    #once pool has been created, we can start the monitor to check for job completion:
+    # once pool has been created, we can start the monitor to check for job completion:
     monitor.run(
         print_output=True,
         sleep_time_s=30,
         analysis_name=analysis_name,
         combinations=combinations,
-        electrolyser_df=electrolyser_df,
-        tank_df=tank_df
+        n_best_results_download=n_best_results_download,
     )
 
-    #delete container, jobs and pool:
+    # delete container, jobs and pool:
     batch_runner.batch_job.cleanup()
 
-    results = pd.read_csv('batch_results_temp.csv')
+    results = pd.read_csv('batch_results/batch_results_temp.csv')
 
     results['electrolyser_id'] = None
     results['number_of_electrolysers'] = None
@@ -245,7 +256,7 @@ if __name__ == '__main__':
 
     for i in range(0, len(results)):
 
-        combination = results.loc[i, 'combination'][1:-1].split(sep = ',')
+        combination = results.loc[i, 'combination'][1:-1].split(sep=',')
 
         results.loc[i, 'electrolyser_id'] = electrolyser_df.loc[int(combination[0]), 'id']
         results.loc[i, 'electrolyser_manufacturer'] = electrolyser_df.loc[int(combination[0]), 'Manufacturer']
@@ -258,6 +269,5 @@ if __name__ == '__main__':
         if len(combination) > 4:
             results.loc[i, 'stack_replacement_years'] = str(combination[4:])
 
-    results.to_csv('batch_results_temp.csv')
-    results.to_csv('batch_results.csv')
-
+    results.to_csv('batch_results/batch_results_temp.csv')
+    results.to_csv('batch_results/batch_results.csv')

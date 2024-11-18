@@ -212,4 +212,5 @@ class BatchSubmission:
                 self.batch_service_client.pool.delete(config.POOL_ID)
                 print(f'Deleting Pool ID: [{config.POOL_ID}]')
             except:
+                print('Failed to delete pool!')
                 pass

@@ -352,7 +352,7 @@ class Analysis():
 
 
         else:
-            lcoh2 = -99.99
+            lcoh2 = 9999
 
         with open(os.path.join(output_dir_high_level, output_dir, 'lcoh2_result.json'), 'w', encoding='utf-8') as f:
             json.dump({

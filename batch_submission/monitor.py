@@ -8,7 +8,6 @@ from batch_submission.config import POOL_ID, MONITOR_SLEEP_TIME_S
 from batch_submission.batch_submission import BatchSubmission
 from examples.azure_batch.batch_downloader import BatchDownloader
 
-
 BAD_STATES = [
     batchmodels.ComputeNodeState.unusable,
     batchmodels.ComputeNodeState.preempted,
@@ -169,8 +168,7 @@ class Monitor:
         sleep_time_s: int = MONITOR_SLEEP_TIME_S,
         analysis_name=None,
         combinations=None,
-        electrolyser_df=None,
-        tank_df=None
+        n_best_results_download=0,
     ) -> None:
         while True:
             failed_nodes = self._find_failed_nodes()
@@ -197,12 +195,29 @@ class Monitor:
 
                 batch_downloader = BatchDownloader(analysis_name=analysis_name)
                 results = batch_downloader.download_results(combinations=combinations)
+                results.to_csv('batch_results/batch_results_temp.csv')
 
-                results.to_csv('batch_results_temp.csv')
+                # extract rows from results that have the lowest five lcoh2 values:
+                best_results = results.nsmallest(n_best_results_download, 'lcoh2').reset_index()
+                for i in range(n_best_results_download):
+                    combination = best_results.loc[i, 'combination']
+                    annual_results = batch_downloader.download_annual_results(combination=combination)
+                    annual_results.to_csv(f'batch_results/annual_results_{combination}.csv')
+                    success = True
+                    run_number = 0
+                    while success:
+                        try:
+                            full_timeseries = batch_downloader.download_full_timeseries(combination=combination,
+                                                                                        run_number=run_number)
+                            full_timeseries.to_csv(f'batch_results/full_timeseries_{combination}_{run_number}.csv')
+                        except:
+                            success = False
+
+                        run_number += 1
 
                 self._resize_pool(
-                   target_low_priority_nodes=0,
-                   target_dedicated_nodes=0,
+                    target_low_priority_nodes=0,
+                    target_dedicated_nodes=0,
                 )
 
                 break
